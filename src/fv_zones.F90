@@ -249,9 +249,9 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, area, wnd, rho,       &
    zone_par  =  zone_par / zone_count
 
    !# non-PAR light fudge
-   zone_nir = (zone_par/0.45) * 0.510
-   zone_uva = (zone_par/0.45) * 0.035
-   zone_uvb = (zone_par/0.45) * 0.005
+   zone_nir = (zone_par/0.43) * 0.520
+   zone_uva = (zone_par/0.43) * 0.048
+   zone_uvb = (zone_par/0.43) * 0.002
 
    zone_wind     =     zone_wind / zone_count
    zone_rain     =     zone_rain / zone_count

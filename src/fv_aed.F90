@@ -1343,13 +1343,18 @@ SUBROUTINE do_aed_models(nCells, nCols)
       CALL check_states(top, bot)
 
       !# populate local light/extc arrays one column at a time
-      IF (.NOT. link_ext_par) &  !#MH check link_ext_par logic
+      IF (.NOT. link_ext_par)  THEN !#MH check link_ext_par logic
          CALL Light(column, bot-top+1, I_0(col), extcoeff(top:bot), par(top:bot), h(top:bot))
+         !# non-PAR light fudge
+         nir(top:bot) = (par(top:bot)/0.43) * 0.520
+         uva(top:bot) = (par(top:bot)/0.43) * 0.048
+         uvb(top:bot) = (par(top:bot)/0.43) * 0.002
+      ELSE
+         nir(top:bot) = (lpar(top:bot)/0.43) * 0.520
+         uva(top:bot) = (lpar(top:bot)/0.43) * 0.048
+         uvb(top:bot) = (lpar(top:bot)/0.43) * 0.002
+      END IF
 
-      !# non-PAR light fudge
-      nir(top:bot) = (par(top:bot)/0.45) * 0.510
-      uva(top:bot) = (par(top:bot)/0.45) * 0.035
-      uvb(top:bot) = (par(top:bot)/0.45) * 0.005
    ENDDO
 !!$OMP END DO
 
