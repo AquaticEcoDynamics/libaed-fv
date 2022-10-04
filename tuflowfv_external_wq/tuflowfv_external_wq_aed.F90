@@ -278,7 +278,7 @@ ENDIF
 
 !IF (do_particle_bgc) CALL set_env_particles(wq%NG,wq%parts)
 
-CALL do_aed_models(wq%nc3,wq%nc2)
+CALL do_aed_models(wq%nc3,wq%nc2,wq%time)
 
 END SUBROUTINE fvwq_update_external
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

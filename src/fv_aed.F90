@@ -1185,7 +1185,7 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
       CALL aed_calculate(column, i)
    ENDDO
 
-   yearday = yearday + part_day_per_step;
+!  yearday = yearday + part_day_per_step;
 END SUBROUTINE calculate_fluxes
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1280,10 +1280,11 @@ END SUBROUTINE fill_nearest
 
 
 !###############################################################################
-SUBROUTINE do_aed_models(nCells, nCols)
+SUBROUTINE do_aed_models(nCells, nCols, time)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER, INTENT(in) :: nCells, nCols
+   AED_REAL,INTENT(in) :: time
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
@@ -1307,6 +1308,8 @@ SUBROUTINE do_aed_models(nCells, nCols)
    !#--------------------------------------------------------------------
    !# START-UP JOBS
    rainloss = zero_
+
+   yearday = day_of_year(time) ! calc from next_time?
 
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
@@ -2111,14 +2114,21 @@ SUBROUTINE Stress(h,rho,taub,ustar,uorb,wvperiod)
 END SUBROUTINE Stress
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+!###############################################################################
 AED_REAL FUNCTION day_of_year(time)
+!-------------------------------------------------------------------------------
+!ARGUMENTS
   AED_REAL,INTENT(in) :: time
-
+!
+!LOCAL VARIABLES:
   integer :: j, jday
   integer :: y, m, d
-  integer :: ya, c;
+  integer :: ya, c
+  AED_REAL :: frac
 
+!-------------------------------------------------------------------------------
   jday = INT4(time/86400.)
+  frac = (time/86400) - jday
 
   ! # calendar_date(jday,&y,&m,&d);
 
@@ -2156,9 +2166,11 @@ AED_REAL FUNCTION day_of_year(time)
   c = y / 100
   ya = y - 100 * c
 
-  day_of_year = jday - (146097 * c) / 4 + (1461 * ya) / 4 + (153 * m + 2) / 5 + d + 1721119;
+  day_of_year = jday - (146097 * c) / 4 + (1461 * ya) / 4 + (153 * m + 2) / 5 + d + 1721119
+  day_of_year = day_of_year + frac
 
 END FUNCTION day_of_year
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 !===============================================================================
 END MODULE fv_aed
