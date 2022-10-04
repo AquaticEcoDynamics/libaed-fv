@@ -203,7 +203,11 @@ CALL set_env_aed_models( wq%dt_update,       &
                         ! 2D feedback arrays
                         wq%biodrag,         &
                         wq%solarshade,      &
-                        wq%rainloss)
+                        wq%rainloss,        &
+                        ! some extras for light
+                        wq%time,            &
+                        wq%latitude         &
+                        )
 
 WRITE(*,'(a)') 'Successful.'
 IF (openstat) WRITE(logunit,'(a)') 'Successful.'

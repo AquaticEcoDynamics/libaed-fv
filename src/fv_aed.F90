@@ -31,7 +31,7 @@
 
 #include "aed.h"
 
-#define FV_AED_VERS "2.2.1"
+#define FV_AED_VERS "2.2.2"
 
 #ifndef DEBUG
 #define DEBUG      0
@@ -114,8 +114,13 @@ MODULE fv_aed
    AED_REAL,DIMENSION(:),POINTER :: lpar
    AED_REAL,TARGET :: col_taub  ! a temp var for bottom stress (computed from ustar_bed)
 
+   !# To support light - CAB these need to be passed in from tuflow, not sure how yet, so fudged
+   AED_REAL,TARGET :: yearday
+   AED_REAL :: part_day_per_step
+   AED_REAL,ALLOCATABLE,DIMENSION(:),TARGET :: lon,lat
+
    !# External variables
-   AED_REAL :: dt
+   AED_REAL,TARGET :: dt
    AED_REAL,DIMENSION(:,:),POINTER :: rad
    AED_REAL,DIMENSION(:),  POINTER :: temp, salt, rho, nuh, h, z
    AED_REAL,DIMENSION(:),  POINTER :: extcoeff, tss, bio_drag
@@ -312,10 +317,6 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    tv = aed_provide_sheet_global( 'longwave', 'longwave' , 'W/m2' )
    tv = aed_provide_sheet_global( 'col_num', 'column number' , '-' )
    tv = aed_provide_sheet_global( 'col_depth', 'column water depth' , 'm above bottom' )
-!   IF (route_table_file /= '') THEN
-!      tv = aed_provide_sheet_global( 'nearest_active', 'nearest active' , '-' )
-!      tv = aed_provide_sheet_global( 'nearest_depth', 'nearest depth' , 'm' )
-!   ENDIF
 
    ! Process input file (aed.nml) to get selected models
    print *,"    reading aed_models config from ",TRIM(tname)
@@ -328,6 +329,12 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
       tv = aed_provide_sheet_global( 'nearest_active', 'nearest active' , '-' )
       tv = aed_provide_sheet_global( 'nearest_depth', 'nearest depth' , 'm' )
    ENDIF
+
+   ! added for oasim
+   tv = aed_provide_sheet_global( 'longitude', 'longitude', 'radians' )
+   tv = aed_provide_sheet_global( 'latitude',  'latitude',  'radians' )
+   tv = aed_provide_sheet_global( 'yearday',   'yearday',   'day' )
+   tv = aed_provide_sheet_global( 'timestep',  'timestep',  'seconds' )
 
    ! Process each model define/setup block
    print *,"    start aed_define_model for (upto) ",size(models),"models"  ! MH limit to non-blank entries
@@ -778,8 +785,10 @@ SUBROUTINE set_env_aed_models(dt_,              &
                             ! 2D feedback arrays
                                biodrag_,         &
                                solarshade_,      &
-                               rainloss_         &
-                               )
+                               rainloss_,        &
+                            ! some extra for light
+                               time, lat_        &
+                              )
 !-------------------------------------------------------------------------------
 ! Provide environmental information from TuflowFV and set feedback arrays
 !-------------------------------------------------------------------------------
@@ -798,6 +807,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
    INTEGER,  INTENT(in), DIMENSION(:,:), POINTER :: mat_id_
    LOGICAL,  INTENT(in), DIMENSION(:),   POINTER :: active_
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: biodrag_, solarshade_, rainloss_
+   AED_REAL, INTENT(in)                          :: time
+   AED_REAL, INTENT(in)                          :: lat_
 !
 !LOCALS
    INTEGER :: i, j
@@ -810,6 +821,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
    !# Provide pointers to arrays with environmental variables to AED.
    dt = dt_
+   part_day_per_step = dt / 86400.
+   yearday = day_of_year(time) ! calc from next_time?
 
    !# 2D (sheet) variables being pointed to
    area => area_
@@ -883,6 +896,9 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
 !print*,"allocating all_parts with ", ubound(temp,1), " cells"
    ALLOCATE(all_particles(ubound(temp,1)))
+
+   ALLOCATE(lon(nCols)) ; lon = 0.
+   ALLOCATE(lat(nCols)) ; lat = lat_
 
 END SUBROUTINE set_env_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -960,8 +976,14 @@ SUBROUTINE check_data
             CASE ( 'longwave' )    ; tvar%found = .true.
             CASE ( 'col_num' )     ; tvar%found = .true.
             CASE ( 'col_depth' )   ; tvar%found = .true.
+
             CASE ( 'nearest_active' ) ; tvar%found = have_nearest ; request_nearest = have_nearest
             CASE ( 'nearest_depth' )  ; tvar%found = have_nearest ; request_nearest = have_nearest
+
+            CASE ( 'longitude' )   ; tvar%found = .true.
+            CASE ( 'latitude' )    ; tvar%found = .true.
+            CASE ( 'yearday' )     ; tvar%found = .true.
+            CASE ( 'timestep' )    ; tvar%found = .true.
          !  CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
          END SELECT
       ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
@@ -1065,6 +1087,12 @@ SUBROUTINE define_column(column, col, cc, cc_diag, flux_pel, flux_atm, flux_ben,
 
             CASE ( 'nearest_active' ) ; column(av)%cell_sheet => nearest_active(col)
             CASE ( 'nearest_depth' )  ; column(av)%cell_sheet => nearest_depth(col)
+
+            CASE ( 'longitude' )   ; column(av)%cell_sheet => lon(col)
+            CASE ( 'latitude' )    ; column(av)%cell_sheet => lat(col)
+            CASE ( 'yearday' )     ; column(av)%cell_sheet => yearday
+            CASE ( 'timestep' )    ; column(av)%cell_sheet => dt
+
             CASE DEFAULT ; CALL STOPIT("ERROR: external variable "//trim(tvar%name)//" not found.")
          END SELECT
       ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
@@ -1113,6 +1141,8 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
    AED_REAL, INTENT(inout) :: flux_rip(:)   !# (n_vars)
    AED_REAL, INTENT(inout) :: h(:)          !# (n_layers)
 !
+   INTEGER :: layer_map(count)
+!
 !LOCALS
    INTEGER :: i
 !-------------------------------------------------------------------------------
@@ -1121,6 +1151,13 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
    flux_atm = zero_
    flux_ben = zero_
    flux_rip = zero_
+
+   !# Start with updating column diagnostics (currently only used for light)
+   DO i=1, count
+!     layer_map(i) = 1 + count-i
+      layer_map(i) = i
+   ENDDO
+   CALL aed_calculate_column(column, layer_map)
 
    !# Calculate temporal derivatives due to air-water exchange.
    CALL aed_calculate_surface(column, 1)
@@ -1145,6 +1182,8 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
    DO i=1,count
       CALL aed_calculate(column, i)
    ENDDO
+
+   yearday = yearday + part_day_per_step;
 END SUBROUTINE calculate_fluxes
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -2070,6 +2109,54 @@ SUBROUTINE Stress(h,rho,taub,ustar,uorb,wvperiod)
 END SUBROUTINE Stress
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+AED_REAL FUNCTION day_of_year(time)
+  AED_REAL,INTENT(in) :: time
+
+  integer :: j, jday
+  integer :: y, m, d
+  integer :: ya, c;
+
+  jday = INT4(time/86400.)
+
+  ! # calendar_date(jday,&y,&m,&d);
+
+  j = jday - 1721119
+  y = (4 * j - 1) / 146097
+
+  j = 4 * j - 1 - 146097 * y
+  d = j / 4
+  j = (4 * d + 3) / 1461
+
+  d = 4 * d + 3 - 1461 * j
+  d = (d + 4) / 4
+  m = (5 * d - 3) / 153
+
+  d = 5 * d - 3 - 153 * m
+  d = (d + 5) / 5
+  y = 100 * y + j
+
+  if (m < 10) then
+      m = m + 3
+  else
+      m = m - 9;
+      y = y + 1;
+  endif
+
+! return jday - julian_day(y,1,1);
+
+  if (m > 2) then
+      m = m - 3
+  else
+      m = m + 9
+      y = y - 1
+  endif
+
+  c = y / 100
+  ya = y - 100 * c
+
+  day_of_year = jday - (146097 * c) / 4 + (1461 * ya) / 4 + (153 * m + 2) / 5 + d + 1721119;
+
+END FUNCTION day_of_year
 
 !===============================================================================
 END MODULE fv_aed
