@@ -824,7 +824,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    !# Provide pointers to arrays with environmental variables to AED.
    dt = dt_
    part_day_per_step = dt / 86400.
-   yearday = day_of_year(time) ! calc from next_time?
+!  yearday = day_of_year(time) ! calc from time
 
    !# 2D (sheet) variables being pointed to
    area => area_
@@ -1185,7 +1185,6 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
       CALL aed_calculate(column, i)
    ENDDO
 
-!  yearday = yearday + part_day_per_step;
 END SUBROUTINE calculate_fluxes
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1309,8 +1308,9 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    !# START-UP JOBS
    rainloss = zero_
 
-   yearday = day_of_year(time) ! calc from next_time?
+   yearday = day_of_year(time) ! calc from time
 
+print * ,'yearday',time,yearday
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
    IF ( .NOT. reinited )  CALL re_initialize()
@@ -2129,6 +2129,7 @@ AED_REAL FUNCTION day_of_year(time)
 !-------------------------------------------------------------------------------
   jday = INT4(time/86400.)
   frac = (time/86400) - jday
+!print*, 'time is ', time, 'jday is ',jday, ' and frac is ', frac
 
   ! # calendar_date(jday,&y,&m,&d);
 
@@ -2154,7 +2155,11 @@ AED_REAL FUNCTION day_of_year(time)
       y = y + 1;
   endif
 
+!print*, 'date : ', y, '/', m, '/', d
+
 ! return jday - julian_day(y,1,1);
+
+  m = 1 ; d = 1
 
   if (m > 2) then
       m = m - 3
@@ -2166,8 +2171,12 @@ AED_REAL FUNCTION day_of_year(time)
   c = y / 100
   ya = y - 100 * c
 
-  day_of_year = jday - (146097 * c) / 4 + (1461 * ya) / 4 + (153 * m + 2) / 5 + d + 1721119
+  day_of_year = (146097 * c) / 4 + (1461 * ya) / 4 + (153 * m + 2) / 5 + d + 1721119
+
+  day_of_year = jday - day_of_year + 1
+!print*,'day of year ', day_of_year
   day_of_year = day_of_year + frac
+!print*,'day of year with frac ', day_of_year
 
 END FUNCTION day_of_year
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
