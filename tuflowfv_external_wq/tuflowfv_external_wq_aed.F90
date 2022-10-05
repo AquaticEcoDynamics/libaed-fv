@@ -206,7 +206,8 @@ CALL set_env_aed_models( wq%dt_update,       &
                         wq%rainloss,        &
                         ! some extras for light
                         wq%time,            &
-                        wq%latitude         &
+                        wq%latitude,        &
+                        wq%air_pres         &
                         )
 
 WRITE(*,'(a)') 'Successful.'

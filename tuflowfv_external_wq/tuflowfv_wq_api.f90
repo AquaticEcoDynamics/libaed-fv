@@ -146,6 +146,7 @@ TYPE,ABSTRACT :: fvwq_class
     !# CAB added for light support
     REAL(wqdk),PUBLIC :: time                                          ! model TIME
     REAL(wqdk),PUBLIC :: latitude                                      ! latitude
+    REAL(wqrk),PUBLIC,POINTER,DIMENSION(:) :: air_pres                 ! AIR PRESSURE (NC2)
 
 CONTAINS
     PROCEDURE(fvwq_construct),DEFERRED :: construct

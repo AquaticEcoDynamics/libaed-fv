@@ -67,6 +67,7 @@ MODULE fv_zones
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_rain
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_rainloss
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_air_temp
+   AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_air_pres
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_humidity
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_bathy
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_I_0
@@ -164,6 +165,7 @@ SUBROUTINE init_zones(nCols, mat_id, avg, n_vars, n_vars_ben, n_vars_diag)
    ALLOCATE(zone_rain(nZones))
    ALLOCATE(zone_rainloss(nZones))
    ALLOCATE(zone_air_temp(nZones))
+   ALLOCATE(zone_air_pres(nZones))
    ALLOCATE(zone_humidity(nZones))
    ALLOCATE(zone_bathy(nZones))
    ALLOCATE(zone_I_0(nZones))
@@ -185,7 +187,8 @@ END SUBROUTINE init_zones
 !###############################################################################
 SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
                            extcoeff, I_0, longwave, nir, par, uva, uvb, tss,   &
-                           rain, rainloss,air_temp, humidity, bathy, col_taub)
+                           rain, rainloss,air_temp, humidity, bathy, col_taub, &
+                           air_pres)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
    INTEGER,              INTENT(in) :: nCols
@@ -194,7 +197,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
    AED_REAL,DIMENSION(:),INTENT(in) :: temp, salt, rho
    AED_REAL,DIMENSION(:),INTENT(in) :: I_0, extcoeff, nir, par, uva, uvb
    AED_REAL,DIMENSION(:),INTENT(in) :: wnd, rain, longwave, rainloss, air_temp, humidity
-   AED_REAL,DIMENSION(:),INTENT(in) :: tss
+   AED_REAL,DIMENSION(:),INTENT(in) :: tss, air_pres
    AED_REAL :: col_taub
 !
 !LOCALS
@@ -223,6 +226,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
    zone_rain = zero_
    zone_rainloss = zero_
    zone_air_temp = zero_
+   zone_air_pres = zero_
    zone_humidity = zero_
    zone_bathy = zero_
    zone_I_0 = zero_
@@ -262,6 +266,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
       zone_rain(zon)     = zone_rain(zon) + rain(col)
       zone_rainloss(zon) = zone_rainloss(zon) + rainloss(col)
       zone_air_temp(zon) = zone_air_temp(zon) + air_temp(col)
+      zone_air_pres(zon) = zone_air_pres(zon) + air_pres(col)
       zone_humidity(zon) = zone_humidity(zon) + humidity(col)
       zone_bathy(zon)    = zone_bathy(zon) + bathy(col)
       zone_I_0(zon)      = zone_I_0(zon) + I_0(col)
@@ -282,6 +287,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
    zone_rain     =     zone_rain / zone_count ;  IF (dbg) print *,'     zone_rain: ',zone_rain(dbg)
    zone_rainloss = zone_rainloss / zone_count ;  IF (dbg) print *,'     zone_rainloss: ',zone_rainloss(dbg)
    zone_air_temp = zone_air_temp / zone_count ;  IF (dbg) print *,'     zone_air_temp: ',zone_air_temp(dbg)
+   zone_air_pres = zone_air_pres / zone_count ;  IF (dbg) print *,'     zone_air_pres: ',zone_air_pres(dbg)
    zone_humidity = zone_humidity / zone_count ;  IF (dbg) print *,'     zone_humidity: ',zone_humidity(dbg)
    zone_longwave = zone_longwave / zone_count ;  IF (dbg) print *,'     zone_longwave: ',zone_longwave(dbg)
    zone_temp     =     zone_temp / zone_count ;  IF (dbg) print *,'     zone_temp: ',zone_temp(dbg)
@@ -319,6 +325,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
          zone_rain(zon)     = 0.0
          zone_rainloss(zon) = 0.0
          zone_air_temp(zon) = 0.0
+         zone_air_pres(zon) = 0.0
          zone_humidity(zon) = 0.0
          zone_bathy(zon)    = 0.0
          zone_I_0(zon)      = 0.0
@@ -468,6 +475,7 @@ SUBROUTINE define_column_zone(column, zon, n_aed_vars)!, n_vars)
             CASE ( 'par_sf' )      ; column(av)%cell_sheet => zone_I_0(zon)
             CASE ( 'taub' )        ; column(av)%cell_sheet => zone_taub
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => zone_air_temp(zon)
+            CASE ( 'air_pres' )    ; column(av)%cell_sheet => zone_air_pres(zon)
             CASE ( 'humidity' )    ; column(av)%cell_sheet => zone_humidity(zon)
             CASE ( 'longwave' )    ; column(av)%cell_sheet => zone_longwave(zon)
             CASE ( 'col_num' )     ; column(av)%cell_sheet => zone_colnums(zon)

@@ -124,7 +124,7 @@ MODULE fv_aed
    AED_REAL,DIMENSION(:,:),POINTER :: rad
    AED_REAL,DIMENSION(:),  POINTER :: temp, salt, rho, nuh, h, z
    AED_REAL,DIMENSION(:),  POINTER :: extcoeff, tss, bio_drag
-   AED_REAL,DIMENSION(:),  POINTER :: I_0, wnd, air_temp, rain, humidity, longwave
+   AED_REAL,DIMENSION(:),  POINTER :: I_0, wnd, air_temp, air_pres, rain, humidity, longwave
    AED_REAL,DIMENSION(:),  POINTER :: area, bathy, shadefrac, rainloss
    AED_REAL,DIMENSION(:),  POINTER :: ustar_bed
    AED_REAL,DIMENSION(:),  POINTER :: wv_uorb, wv_t
@@ -316,6 +316,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    tv = aed_provide_sheet_global( 'par_sf', 'par_sf' , 'W/m2' )
    tv = aed_provide_sheet_global( 'taub', 'layer stress' , 'N/m2' )
    tv = aed_provide_sheet_global( 'air_temp', 'air temperature' , 'celsius' )
+   tv = aed_provide_sheet_global( 'air_pres', 'air pressure' , 'Pa' )
    tv = aed_provide_sheet_global( 'longwave', 'longwave' , 'W/m2' )
    tv = aed_provide_sheet_global( 'col_num', 'column number' , '-' )
    tv = aed_provide_sheet_global( 'col_depth', 'column water depth' , 'm above bottom' )
@@ -789,7 +790,9 @@ SUBROUTINE set_env_aed_models(dt_,              &
                                solarshade_,      &
                                rainloss_,        &
                             ! some extra for light
-                               time, lat_        &
+                               time, lat_,       &
+                            ! and more
+                               air_pres_         &
                               )
 !-------------------------------------------------------------------------------
 ! Provide environmental information from TuflowFV and set feedback arrays
@@ -811,6 +814,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: biodrag_, solarshade_, rainloss_
    AED_REAL, INTENT(in)                          :: time
    AED_REAL, INTENT(in)                          :: lat_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: air_pres_
 !
 !LOCALS
    INTEGER :: i, j
@@ -838,6 +842,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    rainloss => rainloss_
    bio_drag => biodrag_
    air_temp => air_temp_
+   air_pres => air_pres_
    humidity => humidity_
    IF(link_wave_stress)THEN
      wv_uorb => wv_uorb_
@@ -900,7 +905,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    ALLOCATE(all_particles(ubound(temp,1)))
 
    ALLOCATE(lon(nCols)) ; lon = longitude
-   ALLOCATE(lat(nCols)) ; lat = lat_
+   ALLOCATE(lat(nCols)) ; lat = lat_ * 57.2958 ! convert to degrees
 
 END SUBROUTINE set_env_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -974,6 +979,7 @@ SUBROUTINE check_data
             CASE ( 'par_sf' )      ; tvar%found = .true.
             CASE ( 'taub' )        ; tvar%found = .true.
             CASE ( 'air_temp' )    ; tvar%found = .true.
+            CASE ( 'air_pres' )    ; tvar%found = .true.
             CASE ( 'humidity' )    ; tvar%found = .true.
             CASE ( 'longwave' )    ; tvar%found = .true.
             CASE ( 'col_num' )     ; tvar%found = .true.
@@ -1082,6 +1088,7 @@ SUBROUTINE define_column(column, col, cc, cc_diag, flux_pel, flux_atm, flux_ben,
             CASE ( 'par_sf' )      ; column(av)%cell_sheet => I_0(col)
             CASE ( 'taub' )        ; column(av)%cell_sheet => col_taub
             CASE ( 'air_temp' )    ; column(av)%cell_sheet => air_temp(col)
+            CASE ( 'air_pres' )    ; column(av)%cell_sheet => air_pres(col)
             CASE ( 'humidity' )    ; column(av)%cell_sheet => humidity(col)
             CASE ( 'longwave' )    ; column(av)%cell_sheet => longwave(col)
             CASE ( 'col_num' )     ; column(av)%cell_sheet => colnums(col)
@@ -1326,7 +1333,7 @@ print * ,'yearday',time,yearday
       ENDIF
       CALL calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
                    extcoeff, I_0, longwave, nir, tpar, uva, uvb, tss, rain,    &
-                   rainloss, air_temp, humidity, bathy, col_taub)
+                   rainloss, air_temp, humidity, bathy, col_taub, air_pres)
    ENDIF
 
    ! if bio-active particles are running, update particle data
