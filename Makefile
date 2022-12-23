@@ -15,6 +15,10 @@ OSTYPE=$(shell uname -s)
 
 LIBAEDFV=aed-fv
 
+ifeq ($(MDEBUG),true)
+  DEBUG=true
+endif
+
 ifeq ($(AEDWATDIR),)
   AEDWATDIR=../libaed-water
 endif
