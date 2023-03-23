@@ -3,8 +3,9 @@
 # with hydrodynamic driver wrapper
 #
 
-SOVERS=2
-VERS=2.1
+VERSION=$(shell grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+SOVERS=$(shell echo $(VERSION) | cut -f1 -d\.)
+VERS=$(shell echo $(VERSION) | cut -f2- -d\.)
 
 objdir=obj
 srcdir=src

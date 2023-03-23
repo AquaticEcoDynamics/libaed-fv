@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+
+package=libaed-tfv
+year=2023
+version=2023-aed-0
+release=0.1
+wqvers=$(shell grep FV_AED_VERS $(CURDIR)/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+
+export DH_VERBOSE=1
+
+binary:
+	dh_testdir
+	-(mkdir -p $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv)
+	-(mkdir -p $(CURDIR)/debian/libaed-tfv/usr/local/bin)
+	-($(CURDIR)/bin/mk_tuflowfv_libaed > $(CURDIR)/debian/libaed-tfv/usr/local/bin/tuflowfv_libaed)
+	-(cp $(CURDIR)/bin/libtuflowfv_external_turb.sox.1 $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv/libtuflowfv_external_turb.so.1)
+	-(cd $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv ; ln -s libtuflowfv_external_turb.so.1 libtuflowfv_external_turb.so )
+	-(cp $(CURDIR)/bin/libtuflowfv_external_wave.sox.1 $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv/libtuflowfv_external_wave.so.1)
+	-(cd $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv ; ln -s libtuflowfv_external_wave.so.1 libtuflowfv_external_wave.so )
+	-(cp $(CURDIR)/lib/libtuflowfv_external_wq.so.$(wqvers) $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv/libtuflowfv_external_wq.so.1)
+	-(cd $(CURDIR)/debian/libaed-tfv/usr/local/lib/libaed-tfv ; ln -s libtuflowfv_external_wq.so.1 libtuflowfv_external_wq.so )
+	dh_install
+	dh_gencontrol
+	dh_builddeb
+
+
+clean:
+	dh_clean
+
+.PHONY: clean binary
