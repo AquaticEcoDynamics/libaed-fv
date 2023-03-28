@@ -192,6 +192,7 @@ MODULE fv_aed
    AED_REAL :: uvb_frac =  0.002  ! 0.005
 
    AED_REAL :: longitude = 0.
+   AED_REAL :: latlat = 0.
 !  %% END NAMELIST   %%  /aed_bio/
 
    !# Integers storing number of variables being simulated
@@ -237,7 +238,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
                       display_cellid, &
-                      nir_frac,par_frac,uva_frac,uvb_frac, longitude
+                      nir_frac,par_frac,uva_frac,uvb_frac, longitude,latlat
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -905,7 +906,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    ALLOCATE(all_particles(ubound(temp,1)))
 
    ALLOCATE(lon(nCols)) ; lon = longitude
-   ALLOCATE(lat(nCols)) ; lat = lat_ * 57.2958 ! convert to degrees
+   ALLOCATE(lat(nCols)) ; lat = latlat !lat_ * 57.2958 ! convert to degrees
 
 END SUBROUTINE set_env_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
