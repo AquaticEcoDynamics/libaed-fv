@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ "$MYPATH" = "" ] ; then
+  MYPATH='/usr/local/lib/libaed-tfv'
+fi
+
+cat << EOF
+#!/bin/bash
+
+export LD_LIBRARY_PATH=${MYPATH}:/usr/local/lib/tuflowfv-2023.0:\$LD_LIBRARY_PATH
+ulimit -s unlimited > /dev/null
+/usr/local/bin/tuflowfv-2023.0/tuflowfv-2023.0 "\$@"
+EOF

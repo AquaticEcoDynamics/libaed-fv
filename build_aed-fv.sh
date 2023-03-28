@@ -1,4 +1,7 @@
-#!/bin/bash -e
+#!/bin/sh
+
+echo "don't use this, it's old - use the one one directory up"
+exit 0
 
 export EXTERNAL_LIBS=shared
 export SINGLE=false
@@ -49,12 +52,17 @@ if [ "$HAVEPLUS" = "true" ] ; then
   if [ ! -d ${DAEDRIPDIR} ] ; then
     export NO_RIPARIAN=true
   fi
+  export DAEDLGTDIR=${CURDIR}/../libaed-light
+  if [ ! -d ${DAEDLGTDIR} ] ; then
+    export NO_LGT=true
+  fi
   export DAEDDEVDIR=${CURDIR}/../libaed-dev
   if [ ! -d ${DAEDDEVDIR} ] ; then
     export NO_DEV=true
   fi
 else
   export NO_RIPARIAN=true
+  export NO_LGT=true
   export NO_DEV=true
 fi
 
@@ -106,6 +114,10 @@ if [ "$HAVEPLUS" = "true" ] ; then
    echo making in ${DAEDRIPDIR}
    make || exit 1
    export PARAMS="${PARAMS} AEDRIPDIR=${DAEDRIPDIR}"
+   cd ${DAEDLGTDIR}
+   echo making in ${DAEDLGTDIR}
+   make || exit 1
+   export PARAMS="${PARAMS} AEDLGTDIR=${DAEDLGTDIR}"
    cd ${DAEDDEVDIR}
    echo making in ${DAEDDEVDIR}
    make || exit 1
@@ -115,5 +127,46 @@ cd ${CURDIR}
 #make distclean
 echo make ${PARAMS}
 make ${PARAMS} || exit 1
+
+cd "${CURDIR}/.."
+
+# =====================================================================
+# Package building bit
+
+# ***************************** Linux *********************************
+if [ "$OSTYPE" = "Linux" ] ; then
+  if [ $(lsb_release -is) = Ubuntu ] ; then
+    BINPATH=binaries/ubuntu/$(lsb_release -rs)
+    if [ ! -d "${BINPATH}" ] ; then
+      mkdir -p "${BINPATH}"/
+    fi
+    cd ${CURDIR}
+    if [ -x glm+ ] ; then
+       /bin/cp debian/control-with+ debian/control
+    else
+       /bin/cp debian/control-no+ debian/control
+    fi
+    VERSDEB=`head -1 debian/changelog | cut -f2 -d\( | cut -f1 -d-`
+    echo debian version $VERSDEB
+    if [ "$VERSION" != "$VERSDEB" ] ; then
+      echo updating debian version
+      dch --newversion ${VERSION}-0 "new version ${VERSION}"
+    fi
+    VERSRUL=`grep 'version=' debian/rules | cut -f2 -d=`
+    if [ "$VERSION" != "$VERSRUL" ] ; then
+      sed -i "s/version=$VERSRUL/version=$VERSION/" debian/rules
+    fi
+
+    fakeroot ${MAKE} -f debian/rules binary || exit 1
+
+    cd ..
+
+    mv glm*.deb ${BINPATH}/
+  else
+    BINPATH="binaries/$(lsb_release -is)/$(lsb_release -rs)"
+    echo "No package build for $(lsb_release -is)"
+  fi
+fi
+
 
 exit 0

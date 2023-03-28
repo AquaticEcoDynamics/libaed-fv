@@ -1,0 +1,10 @@
+Source: libaed-tfv
+Maintainer: Aquatic EcoDynamics Group
+Section: science
+Priority: extra
+
+Package: libaed-tfv
+Replaces: tuflowfv-aed
+Architecture: amd64
+Description: libaed-fv for TUFLOW FV 2023.0
+ libaed-fv installer with for tuflowfv
