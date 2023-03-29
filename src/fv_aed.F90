@@ -31,7 +31,7 @@
 
 #include "aed.h"
 
-#define FV_AED_VERS "2.2.3"
+#define FV_AED_VERS "2.2.4"
 
 #ifndef DEBUG
 #define DEBUG      0
@@ -163,6 +163,7 @@ MODULE fv_aed
    LOGICAL  :: do_zone_averaging = .FALSE.
    LOGICAL  :: link_solar_shade = .TRUE.
    LOGICAL  :: link_rain_loss = .FALSE.
+   LOGICAL  :: depress_clutch = .FALSE.
 
    !# Name of files being used to load initial values for benthic
    !  or benthic_diag vars, and the horizontal routing table for riparian flows
@@ -237,7 +238,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                       do_limiter, glob_min, glob_max, no_glob_lim,             &
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
-                      display_cellid, &
+                      display_cellid, depress_clutch,                          &
                       nir_frac,par_frac,uva_frac,uvb_frac, longitude,latlat
 !
 !-------------------------------------------------------------------------------
@@ -1310,6 +1311,10 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
+   !# for debugging, depress flag doesn't run the aed library - allows us to 
+   !#  see how much time is used by libaed calculations by not doing them
+   IF (depress_clutch) return
+
    print *,"    START do_aed_models"
 
    !#--------------------------------------------------------------------
@@ -1318,7 +1323,6 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
    yearday = day_of_year(time) ! calc from time
 
-print * ,'yearday',time,yearday
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
    IF ( .NOT. reinited )  CALL re_initialize()
