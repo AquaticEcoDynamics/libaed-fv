@@ -44,6 +44,7 @@ MODULE fv_aed
    USE aed_common
    USE fv_zones
    USE ieee_arithmetic
+   USE OMP_LIB
 
    IMPLICIT NONE
 
@@ -1287,6 +1288,7 @@ END SUBROUTINE fill_nearest
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+
 !###############################################################################
 SUBROUTINE do_aed_models(nCells, nCols, time)
 !-------------------------------------------------------------------------------
@@ -1296,15 +1298,8 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
-   AED_REAL :: tr
 
-   AED_REAL :: flux_ben(n_vars+n_vars_ben), flux_atm(n_vars+n_vars_ben),       &
-               flux_rip(n_vars+n_vars_ben)
-   TYPE (aed_column_t) :: column(n_aed_vars)
-
-   INTEGER  :: i, j, col, lev, top, bot, v, na, d
-   AED_REAL :: rain_loss
-   LOGICAL  :: aed_active_col
+   INTEGER :: i, j, col, lev, v, d
    AED_REAL,DIMENSION(:),POINTER :: tpar
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
@@ -1393,12 +1388,146 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       ENDDO
    ENDIF
 
-!!$OMP DO PRIVATE(col,top,bot)
+
+!print*,"do pre_kinetics"
+!$OMP PARALLEL DO
    !#--------------------------------------------------------------------
    !# LOOP THROUGH COLUMNS DOING JOBS PRIOR TO THE KINETICS BEING SOLVED
    DO col=1, nCols
+!     print*,'pre_kinetics(', col, ')'
+      CALL pre_kinetics(col)
+   ENDDO
+!$OMP END PARALLEL DO
+
+!print*,"barrier"
+!$OMP BARRIER
+!print*,"barrier done"
+
+   IF ( do_zone_averaging ) THEN
+      !# debug : set diag value on the bottom to the column number
+      !# When doing zone averaging we do the benthic calls before the main column loop
+      !# to get the pelagic fluxes icreated by benthic routiens which are then
+      !# aggregated into the flux values in the call to calculate_fluxes below.
+      CALL copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
+      CALL compute_zone_benthic_fluxes(n_aed_vars)
+      CALL copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
+   ENDIF
+
+!print*,"do wq"
+!$OMP PARALLEL DO
+   !#--------------------------------------------------------------------
+   !# THIS IS THE MAIN WQ SOLUTION LOOP
+   DO col=1, nCols
+!     print*,'do_aed_wq(', col, ')'
+      CALL do_aed_wq(col)
+   ENDDO ! cols
+!$OMP END PARALLEL DO
+
+!print*,"barrier 2"
+!$OMP BARRIER
+!print*,"barrier 2 done"
+
+   IF ( ThisStep >= n_equil_substep ) ThisStep = 0
+
+   IF ( display_minmax ) THEN
+      v = 0; d = 0
+      DO i=1,n_aed_vars
+         IF ( aed_get_var(i, tv) ) THEN
+            IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
+               v = v + 1
+               WRITE(*,'(1X,"VarLims: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
+               !print *,'VarLims',v,TRIM(tv%name),MINVAL(cc(v,:)),MAXVAL(cc(v,:))
+            ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
+               d = d + 1
+               WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
+               !print *,'DiagLim',d,TRIM(tv%name),MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:))
+            ENDIF
+         ENDIF
+      ENDDO
+   ENDIF
+
+   IF ( n_cellids > 0 ) THEN
+      v = 0; d = 0
+      DO i=1,n_aed_vars
+         IF ( aed_get_var(i, tv) ) THEN
+            IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
+               v = v + 1
+            ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
+               d = d + 1
+            ENDIF
+            DO j = 1, n_cellids
+               lev = display_cellid(j)   !MH this is the 3D cell, we should make surface cell of 2D column to link to SMS
+               IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
+                  WRITE(*,'(1X,"Var: ",I0,1X,"<=> ",f15.8,f15.8," : ",A, " cell: ",f15.8)') &
+                              v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name), cc(v,lev)
+               ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
+                  WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ", A, " cell: ",f15.8)') &
+                              d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name), cc_diag(d,lev)
+               ENDIF
+            ENDDO
+         ENDIF
+      ENDDO  ! cellids
+   ENDIF
+
+    print *,"    Finished AED step"
+
+CONTAINS
+
+   !###############################################################################
+   SUBROUTINE re_initialize()
+   !-------------------------------------------------------------------------------
+   !ARGUMENTS
+   !
+   !LOCALS
+   !  INTEGER  :: i, col, lev, top, bot, count, nCols
+      INTEGER  :: col, lev, top, bot, count, nCols
+      AED_REAL :: flux_ben(n_vars+n_vars_ben), flux_atm(n_vars+n_vars_ben),       &
+                  flux_rip(n_vars+n_vars_ben)
+      TYPE (aed_column_t) :: column(n_aed_vars)
+   !
+   !-------------------------------------------------------------------------------
+   !BEGIN
+      nCols = ubound(active, 1)
+
+      DO col=1, nCols
+         top = surf_map(col)
+         bot = benth_map(col)
+         count = bot-top+1
+         CALL define_column(column, col, cc, cc_diag, flux, flux_atm, flux_ben, flux_rip)
+         DO lev=1, count
+            CALL aed_initialize(column, lev)
+         ENDDO
+         IF ( .NOT. do_zone_averaging ) &
+            CALL aed_initialize_benthic(column, 1)
+      ENDDO
+
+      IF ( do_zone_averaging ) &
+         CALL aed_initialize_zone_benthic(nCols, active, n_aed_vars, cc_diag, benth_map)
+
+      reinited = .TRUE.
+   END SUBROUTINE re_initialize
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+   !###############################################################################
+   SUBROUTINE pre_kinetics(col)
+   !-------------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER,INTENT(in) :: col
+   !
+   !LOCALS
+      TYPE(aed_variable_t),POINTER :: tv
+      AED_REAL :: flux_ben(n_vars+n_vars_ben), flux_atm(n_vars+n_vars_ben),       &
+                  flux_rip(n_vars+n_vars_ben)
+      INTEGER  :: i, lev, top, bot, v
+      TYPE (aed_column_t) :: column(n_aed_vars)
+   !
+   !-------------------------------------------------------------------------------
+   !BEGIN
       ! move to next column if dry
-      IF (.NOT. active(col)) CYCLE
+      IF (.NOT. active(col)) RETURN
 
       ! identify cell indicies within the domain
       top = surf_map(col)
@@ -1450,25 +1579,26 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
         uva(top:bot) = (lpar(top:bot)/par_frac) * uva_frac
         uvb(top:bot) = (lpar(top:bot)/par_frac) * uvb_frac
       ENDIF
-   ENDDO
-!!$OMP END DO
+   END SUBROUTINE pre_kinetics
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-!!$OMP BARRIER
 
-   IF ( do_zone_averaging ) THEN
-      !# debug : set diag value on the bottom to the column number
-      !# When doing zone averaging we do the benthic calls before the main column loop
-      !# to get the pelagic fluxes icreated by benthic routiens which are then
-      !# aggregated into the flux values in the call to calculate_fluxes below.
-      CALL copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
-      CALL compute_zone_benthic_fluxes(n_aed_vars)
-      CALL copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
-   ENDIF
+   !###############################################################################
+   SUBROUTINE do_aed_wq(col)
+   !-------------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER,INTENT(in) :: col
+   !
+   !LOCALS
+      AED_REAL :: flux_ben(n_vars+n_vars_ben), flux_atm(n_vars+n_vars_ben),       &
+                  flux_rip(n_vars+n_vars_ben)
+      TYPE (aed_column_t) :: column(n_aed_vars)
 
-!!$OMP DO PRIVATE(col,top,bot,aed_active_col,na,lev,i)
-   !#--------------------------------------------------------------------
-   !# THIS IS THE MAIN WQ SOLUTION LOOP
-   DO col=1, nCols
+      INTEGER  :: i, lev, top, bot, na
+      LOGICAL  :: aed_active_col
+   !
+   !-------------------------------------------------------------------------------
+   !BEGIN
       !# find top and bottom cell indicies based on maps provided by the host
       top = surf_map(col)
       bot = benth_map(col)
@@ -1506,7 +1636,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
                               * MIN((area(col)/area(na)),r100)/h(benth_map(na))
             ENDIF
          ENDIF
-         CYCLE
+         RETURN
       ENDIF
 
       !# do non-kinetic updates to BGC variables (eq equilibration)
@@ -1574,88 +1704,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !        ENDIF
 !        pactive(col) = active(col)
 !     ENDIF
-   ENDDO ! cols
-!!$OMP END DO
-
-!!$OMP BARRIER
-
-   IF ( ThisStep >= n_equil_substep ) ThisStep = 0
-
-   IF ( display_minmax ) THEN
-      v = 0; d = 0
-      DO i=1,n_aed_vars
-         IF ( aed_get_var(i, tv) ) THEN
-            IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
-               WRITE(*,'(1X,"VarLims: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'VarLims',v,TRIM(tv%name),MINVAL(cc(v,:)),MAXVAL(cc(v,:))
-            ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
-               d = d + 1
-               WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'DiagLim',d,TRIM(tv%name),MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:))
-            ENDIF
-         ENDIF
-      ENDDO
-   ENDIF
-
-   IF ( n_cellids > 0 ) THEN
-      v = 0; d = 0
-      DO i=1,n_aed_vars
-         IF ( aed_get_var(i, tv) ) THEN
-            IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
-            ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
-               d = d + 1
-            ENDIF
-            DO j = 1, n_cellids
-               lev = display_cellid(j)   !MH this is the 3D cell, we should make surface cell of 2D column to link to SMS
-               IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-                  WRITE(*,'(1X,"Var: ",I0,1X,"<=> ",f15.8,f15.8," : ",A, " cell: ",f15.8)') &
-                              v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name), cc(v,lev)
-               ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
-                  WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ", A, " cell: ",f15.8)') &
-                              d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name), cc_diag(d,lev)
-               ENDIF
-            ENDDO
-         ENDIF
-      ENDDO  ! cellids
-   ENDIF
-
-    print *,"    Finished AED step"
-
-CONTAINS
-
-   !###############################################################################
-   SUBROUTINE re_initialize()
-   !-------------------------------------------------------------------------------
-   !ARGUMENTS
-   !
-   !LOCALS
-      INTEGER  :: i, col, lev, top, bot, count, nCols
-   !
-   !-------------------------------------------------------------------------------
-   !BEGIN
-      nCols = ubound(active, 1)
-
-      DO col=1, nCols
-         top = surf_map(col)
-         bot = benth_map(col)
-         count = bot-top+1
-         CALL define_column(column, col, cc, cc_diag, flux, flux_atm, flux_ben, flux_rip)
-         DO lev=1, count
-            CALL aed_initialize(column, lev)
-         ENDDO
-         IF ( .NOT. do_zone_averaging ) &
-            CALL aed_initialize_benthic(column, 1)
-      ENDDO
-
-      IF ( do_zone_averaging ) &
-         CALL aed_initialize_zone_benthic(nCols, active, n_aed_vars, cc_diag, benth_map)
-
-      reinited = .TRUE.
-   END SUBROUTINE re_initialize
+   END SUBROUTINE do_aed_wq
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 END SUBROUTINE do_aed_models

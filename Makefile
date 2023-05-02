@@ -30,17 +30,16 @@ OUTLIB=libtuflowfv_external_wq
 
 ifeq ($(OSTYPE),Darwin)
   SHARED=-dynamiclib -undefined dynamic_lookup
-  OMPFLAG=-fopenmp
   so_ext=dylib
 else
   SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
-  OMPFLAG=-qopenmp
   so_ext=so
 endif
 
 ifeq ($(F90),ifort)
   INCLUDES+=-I/opt/intel/include
   DEBUG_FFLAGS=-g -traceback
+  OMPFLAG=-qopenmp
   OPT_FFLAGS=-O3 ${OMPFLAG}
   FFLAGS=-g -fpp -warn all -module ${moddir} -static-intel -mp1 -warn nounused $(DEFINES)
   ifeq ($(WITH_CHECKS),true)
@@ -52,6 +51,7 @@ else ifeq ($(F90),flang)
     INCLUDES+=-I../ancillary/freebsd/mod
   endif
   DEBUG_FFLAGS=-g
+  OMPFLAG=-fopenmp
   OPT_FFLAGS=-O3
   FFLAGS=-g -fPIC -module ${moddir} $(DEFINES) $(INCLUDES)
   ifeq ($(WITH_CHECKS),true)
