@@ -1310,6 +1310,8 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    !#  see how much time is used by libaed calculations by not doing them
    IF (depress_clutch) return
 
+!$OMP BARRIER
+!$OMP SINGLE
    print *,"    START do_aed_models"
 
    !#--------------------------------------------------------------------
@@ -1388,6 +1390,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       ENDDO
    ENDIF
 
+!$OMP END SINGLE
 
 !print*,"do pre_kinetics"
 !$OMP PARALLEL DO
@@ -1404,6 +1407,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !print*,"barrier done"
 
    IF ( do_zone_averaging ) THEN
+!$OMP SINGLE
       !# debug : set diag value on the bottom to the column number
       !# When doing zone averaging we do the benthic calls before the main column loop
       !# to get the pelagic fluxes icreated by benthic routiens which are then
@@ -1411,6 +1415,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       CALL copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
       CALL compute_zone_benthic_fluxes(n_aed_vars)
       CALL copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
+!$OMP END SINGLE
    ENDIF
 
 !print*,"do wq"
@@ -1429,6 +1434,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
    IF ( ThisStep >= n_equil_substep ) ThisStep = 0
 
+!$OMP SINGLE
    IF ( display_minmax ) THEN
       v = 0; d = 0
       DO i=1,n_aed_vars
@@ -1472,6 +1478,8 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    ENDIF
 
     print *,"    Finished AED step"
+
+!$OMP END SINGLE
 
 CONTAINS
 
