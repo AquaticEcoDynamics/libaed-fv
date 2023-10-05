@@ -112,7 +112,7 @@ INCLUDES += -I${moddir}
 
 
 FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
-OBJECTS=${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
+OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
   TARGET = ${libdir}/$(OUTLIB).${so_ext}
@@ -155,6 +155,9 @@ ${libdir}/${OUTLIB}.${so_ext}: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	$(FC) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJECTS} ${LDFLAGS} ${SOFLAGS}
 	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@
 	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
+
+${objdir}/tuflowfv_wq_api.o: tuflowfv_external_wq/tuflowfv_wq_api.f90
+	$(F90) ${FFLAGS} ${INCLUDES} -g -c $< -o $@
 
 ${objdir}/%.o: ${srcdir}/%.F90 ${AEDWATDIR}/include/aed.h
 	$(F90) ${FFLAGS} ${INCLUDES} -g -c $< -o $@
