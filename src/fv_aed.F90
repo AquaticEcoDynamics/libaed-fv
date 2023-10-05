@@ -845,7 +845,12 @@ SUBROUTINE set_env_aed_models(dt_,              &
    rainloss => rainloss_
    bio_drag => biodrag_
    air_temp => air_temp_
-   air_pres => air_pres_
+   IF ( ASSOCIATED(air_pres) ) THEN
+     air_pres => air_pres_
+   ELSE
+     ALLOCATE(air_pres(SIZE(air_temp)))
+     air_pres = 1013.25
+   ENDIF
    humidity => humidity_
    IF(link_wave_stress)THEN
      wv_uorb => wv_uorb_
