@@ -65,11 +65,11 @@
 				<Tool Name="VFPostBuildEventTool"/>
 				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration></Configurations>
 	<Files>
-		<Filter Name="Header Files" Filter="fi;fd">
-		<File RelativePath="..\tuflowfv_external_wq\tuflowfv_wq_api.f90"/></Filter>
+		<Filter Name="Header Files" Filter="fi;fd"></Filter>
 		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
 		<File RelativePath=".\libfvaed.rc"/></Filter>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
 		<File RelativePath="..\..\libaed-water\src\aed_external.F90"/>
+		<File RelativePath="..\tuflowfv_external_wq\tuflowfv_wq_api.f90"/>
 		<File RelativePath="..\tuflowfv_external_wq\tuflowfv_external_wq_aed.F90"/></Filter></Files>
 	<Globals/></VisualStudioProject>
