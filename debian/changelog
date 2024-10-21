@@ -1,3 +1,9 @@
+libaed-tfv (2023.1.1-0) UNRELEASED; urgency=low
+
+  * new version 2023.1.1
+
+ -- Casper Boon <casper@eridanus>  Fri, 18 Dec 2024 07:44:30 +0800
+
 libaed-tfv (2023.0-0) UNRELEASED; urgency=low
 
   * new version 2023.0

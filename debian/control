@@ -6,5 +6,5 @@ Priority: extra
 Package: libaed-tfv
 Replaces: tuflowfv-aed
 Architecture: amd64
-Description: libaed-fv for TUFLOW FV 2023.0
+Description: libaed-fv for TUFLOW FV 2023.1.1
  libaed-fv installer with for tuflowfv

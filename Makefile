@@ -186,3 +186,4 @@ clean:
 
 distclean: clean
 	/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
+	/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv
