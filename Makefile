@@ -63,18 +63,9 @@ endif
 FFLAGS+=-fPIC
 
 LIBWATAED=aed-water
-AEDAPIDIR=../libaed-api
-LIBAEDAPI=aed-api
-INCLUDES+=-I$(AEDWATDIR)/include -I$(AEDWATDIR)/mod
-INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
-
-SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
+SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
 
 EXTFLAG=
-ifneq ($(AEDAPIDIR),)
-  LIBAPIAED=aed-api
-  SOFLAGS+=${AEDAPIDIR}/lib/lib${LIBAPIAED}.a
-endif
 ifneq ($(AEDBENDIR),)
   LIBBENAED=aed-benthic
   SOFLAGS+=${AEDBENDIR}/lib/lib${LIBBENAED}.a
@@ -120,8 +111,7 @@ TFFLAGS += -g -DAED -DEXTERNAL_WQ=2
 INCLUDES += -I${moddir}
 
 
-#FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
-FVOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
+FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
@@ -143,9 +133,6 @@ ${libdir}/${OUTLIB}.a: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	#  aed libs at final link stage.  This ugly haque combines the necessary aed libs
 	#  into the external wq lib so there is less change to the tfv makefile
 	( cd ${objdir} ; ar -x ${AEDWATDIR}/lib/lib${LIBWATAED}.a )
-ifneq ($(AEDAPIDIR),)
-	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a )
-endif
 ifneq ($(AEDBENDIR),)
 	( cd ${objdir} ; ar -x ${AEDBENDIR}/lib/lib${LIBBENAED}.a )
 endif
@@ -199,3 +186,4 @@ clean:
 
 distclean: clean
 	/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
+	/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv

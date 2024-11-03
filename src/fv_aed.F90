@@ -123,8 +123,8 @@ MODULE fv_aed
    !# External variables
    AED_REAL,TARGET :: dt
    AED_REAL,DIMENSION(:,:),POINTER :: rad
-   AED_REAL,DIMENSION(:),  POINTER :: temp, salt, rho, nuh, h, depth
-   AED_REAL,DIMENSION(:),  POINTER :: extc, tss, bio_drag
+   AED_REAL,DIMENSION(:),  POINTER :: temp, salt, rho, nuh, h, z
+   AED_REAL,DIMENSION(:),  POINTER :: extcoeff, tss, bio_drag
    AED_REAL,DIMENSION(:),  POINTER :: I_0, wnd, air_temp, air_pres, rain, humidity, longwave
    AED_REAL,DIMENSION(:),  POINTER :: area, bathy, shadefrac, rainloss
    AED_REAL,DIMENSION(:),  POINTER :: ustar_bed
@@ -867,8 +867,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
    !# 3D variables being pointed to
    h => h_               !# layer heights [1d array] needed for advection, diffusion
-   depth => z_               !# depth [1d array], used to calculate local pressure
-   extc => extcoeff_ !# biogeochemical light attenuation coefficients [1d array],
+   z => z_               !# depth [1d array], used to calculate local pressure
+   extcoeff => extcoeff_ !# biogeochemical light attenuation coefficients [1d array],
                          !# output of biogeochemistry, input for physics
    salt => salt_
    temp => temp_
@@ -897,8 +897,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
 !if ( .not. associated(bio_drag) ) print*, " No association for bio_drag"
 !if ( .not. associated(air_temp) ) print*, " No association for air_temp"
 !if ( .not. associated(h) ) print*, " No association for h"
-!if ( .not. associated(depth) ) print*, " No association for depth"
-!if ( .not. associated(extc) ) print*, " No association for extc"
+!if ( .not. associated(z) ) print*, " No association for z"
+!if ( .not. associated(extcoeff) ) print*, " No association for extcoeff"
 !if ( .not. associated(salt) ) print*, " No association for salt"
 !if ( .not. associated(temp) ) print*, " No association for temp"
 !if ( .not. associated(rho) ) print*, " No association for rho"
@@ -1076,7 +1076,7 @@ SUBROUTINE define_column(column, col, cc, cc_diag, flux_pel, flux_atm, flux_ben,
                                         column(av)%cell_sheet => mat(col)
                                      ENDIF
             CASE ( 'bathy' )       ; column(av)%cell_sheet => bathy(col)
-            CASE ( 'extc_coef' )   ; column(av)%cell => extc(top:bot)
+            CASE ( 'extc_coef' )   ; column(av)%cell => extcoeff(top:bot)
             CASE ( 'tss' )         ; column(av)%cell => tss(top:bot)
             CASE ( 'ss1' )         ; column(av)%cell => tss(top:bot)   !   For FV API 2.0 (To be connected to sed_conc)
             CASE ( 'ss2' )         ; column(av)%cell => tss(top:bot)   !   For FV API 2.0 (To be connected to sed_conc)
@@ -1100,7 +1100,7 @@ SUBROUTINE define_column(column, col, cc, cc_diag, flux_pel, flux_atm, flux_ben,
             CASE ( 'humidity' )    ; column(av)%cell_sheet => humidity(col)
             CASE ( 'longwave' )    ; column(av)%cell_sheet => longwave(col)
             CASE ( 'col_num' )     ; column(av)%cell_sheet => colnums(col)
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => depth(col)
+            CASE ( 'col_depth' )   ; column(av)%cell_sheet => z(col)
 
             CASE ( 'nearest_active' ) ; column(av)%cell_sheet => nearest_active(col)
             CASE ( 'nearest_depth' )  ; column(av)%cell_sheet => nearest_depth(col)
@@ -1338,8 +1338,8 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       ELSE
          tpar => par
       ENDIF
-      CALL calc_zone_areas(nCols, active, temp, salt, h, depth, area, wnd, rho,    &
-                   extc, I_0, longwave, nir, tpar, uva, uvb, tss, rain,    &
+      CALL calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
+                   extcoeff, I_0, longwave, nir, tpar, uva, uvb, tss, rain,    &
                    rainloss, air_temp, humidity, bathy, col_taub, air_pres)
    ENDIF
 
@@ -1581,7 +1581,7 @@ CONTAINS
 
       !# populate local light/extc arrays one column at a time
       IF (.NOT. link_ext_par) THEN
-         CALL Light(column, bot-top+1, I_0(col), extc(top:bot), par(top:bot), h(top:bot))
+         CALL Light(column, bot-top+1, I_0(col), extcoeff(top:bot), par(top:bot), h(top:bot))
          ! non PAR bandwidth fractions (set assuming single light extinction)
          nir(top:bot) = (par(top:bot)/par_frac) * nir_frac
          uva(top:bot) = (par(top:bot)/par_frac) * uva_frac
@@ -1706,7 +1706,7 @@ CONTAINS
 
       !# now the bgc updates are complete, update links to host model
       CALL BioDrag(column, bot-top+1, bio_drag(col))
-      CALL BioExtinction(column, bot-top+1, extc(top:bot))
+      CALL BioExtinction(column, bot-top+1, extcoeff(top:bot))
     ! CALL BioBlockage(  aed_bio_blockage_vegetation  )
     ! CALL BioDensity()
 
