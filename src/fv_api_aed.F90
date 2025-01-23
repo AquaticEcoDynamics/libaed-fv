@@ -34,11 +34,22 @@
 #endif
 
 !###############################################################################
+<<<<<<< HEAD
 MODULE fv_api_aed
 !-------------------------------------------------------------------------------
    USE aed_water
    USE aed_common
    USE fv_api_zones
+=======
+!MODULE fv_api_aed
+MODULE fv_aed
+!-------------------------------------------------------------------------------
+   USE aed_util
+   USE aed_water
+   USE aed_common
+!  USE fv_api_zones
+   USE fv_zones
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
    USE ieee_arithmetic
    USE OMP_LIB
 
@@ -131,6 +142,7 @@ MODULE fv_api_aed
 
    !# External variables
    AED_REAL,TARGET :: dt
+<<<<<<< HEAD
    AED_REAL,DIMENSION(:,:),POINTER :: rad
    AED_REAL,DIMENSION(:),  POINTER :: temp
    AED_REAL,DIMENSION(:),  POINTER :: salt
@@ -166,11 +178,52 @@ MODULE fv_api_aed
    AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
    AED_REAL,DIMENSION(:),POINTER :: sed_zones => null()
    AED_REAL,DIMENSION(:),POINTER :: pres => null()
+=======
+   AED_REAL,DIMENSION(:,:),POINTER :: rad       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: temp      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: salt      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: rho       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: nuh       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: h         => null()
+   AED_REAL,DIMENSION(:),  POINTER :: depth     => null()
+   AED_REAL,DIMENSION(:),  POINTER :: dz        => null()
+   AED_REAL,DIMENSION(:),  POINTER :: extc      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: tss       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: ss1       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: ss2       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: ss3       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: ss4       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: bio_drag  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: I_0       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: wnd       => null()
+   AED_REAL,DIMENSION(:),  POINTER :: air_temp  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: air_pres  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: rain      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: humidity  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: longwave  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: area      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: bathy     => null()
+   AED_REAL,DIMENSION(:),  POINTER :: shadefrac => null()
+   AED_REAL,DIMENSION(:),  POINTER :: rainloss  => null()
+   AED_REAL,DIMENSION(:),  POINTER :: ustar_bed => null()
+   AED_REAL,DIMENSION(:),  POINTER :: wv_uorb   => null()
+   AED_REAL,DIMENSION(:),  POINTER :: wv_t      => null()
+   AED_REAL,DIMENSION(:),  POINTER :: vvel      => null()    !# vertical velocity
+   AED_REAL,DIMENSION(:),  POINTER :: cvel      => null()    !# cell velocity
+
+   AED_REAL,DIMENSION(:),POINTER :: layer_stress => null()
+   AED_REAL,DIMENSION(:),POINTER :: sed_zones    => null()
+   AED_REAL,DIMENSION(:),POINTER :: pres         => null()
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
    !# maximum single precision real is 2**128 = 3.4e38
    AED_REAL :: glob_min = -1.0e38
    AED_REAL :: glob_max =  1.0e38
    LOGICAL  :: no_glob_lim = .FALSE.
+<<<<<<< HEAD
+=======
+   AED_REAL :: min_water_depth =  0.0401
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
    LOGICAL  :: link_ext_par = .FALSE.
    LOGICAL  :: link_wave_stress = .FALSE.
@@ -247,7 +300,10 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    AED_REAL :: glob_max =  1.0e38
    LOGICAL  :: no_glob_lim = .FALSE.
 
+<<<<<<< HEAD
    AED_REAL :: min_water_depth =  0.0401
+=======
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
    INTEGER  :: n_equil_substep = 1
 
    LOGICAL  :: display_minmax = .FALSE.
@@ -360,6 +416,12 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    CALL aed_config_model(conf)
 
    n_aed_vars = aed_init_model(tname, n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
+<<<<<<< HEAD
+=======
+   nwq_var = n_vars
+   nben_var = n_vars_ben
+   ndiag_var = n_vars_diag + n_vars_diag_sheet
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
    !# names = grab the names from info
    ALLOCATE(names(1:nwq_var),stat=status)
@@ -874,20 +936,33 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
    CALL aed_set_model_data(aed_data)
 
+<<<<<<< HEAD
    IF (n_zones .GT. 0) &
       CALL api_set_fv_zones(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
 
    CALL init_zones(ubound(mat_id_, 2), mat_id_, do_zone_averaging, n_vars, n_vars_ben, n_vars_diag)
+=======
+   CALL api_init_zones(ubound(mat_id_, 2), mat_id_, do_zone_averaging,         &
+                             n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
 !print*,"allocating all_parts with ", ubound(temp,1), " cells"
    ALLOCATE(all_particles(ubound(temp,1)))
 
    ALLOCATE(lon(nCols)) ; lon = longitude
+<<<<<<< HEAD
    ALLOCATE(lat(nCols)) ; lat = latlat !lat_ * 57.2958 ! convert to degrees
+=======
+   ALLOCATE(lat(nCols)) ; lat = lat_ * 57.2958 ! convert to degrees
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
 END SUBROUTINE set_env_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+<<<<<<< HEAD
+=======
+#if 0
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 ! !###############################################################################
 ! SUBROUTINE CheckPhreatic
 ! !-------------------------------------------------------------------------------
@@ -910,7 +985,10 @@ END SUBROUTINE set_env_aed_models
 ! END SUBROUTINE CheckPhreatic
 
 
+<<<<<<< HEAD
 #if 0
+=======
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 !###############################################################################
 SUBROUTINE check_data
 !-------------------------------------------------------------------------------
@@ -1279,6 +1357,10 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    AED_REAL,DIMENSION(:),POINTER :: tpar
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
+<<<<<<< HEAD
+=======
+   INTEGER :: wlev = 0.
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1365,6 +1447,10 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
 !$OMP END SINGLE
 
+<<<<<<< HEAD
+=======
+!  wlev = abs(top-bot)
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
    CALL aed_run_model(nCols, wlev, do_2d_atm_flux)
 
 END SUBROUTINE do_aed_models
@@ -1901,7 +1987,12 @@ END FUNCTION day_of_year
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 !===============================================================================
+<<<<<<< HEAD
 END MODULE fv_api_aed
+=======
+!END MODULE fv_api_aed
+END MODULE fv_aed
+>>>>>>> 5575b76ae5b39c41209933b52fa78f78ab1df142
 
 !===============================================================================
 !
