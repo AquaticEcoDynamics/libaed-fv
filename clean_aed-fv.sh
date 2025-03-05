@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CWD=`pwd`
-for i in water benthic riparian demo dev ; do
+for i in water benthic riparian demo light dev ; do
    echo clean libaed-$i
    if [ -d ../libaed-$i ] ; then
      cd  ../libaed-$i
