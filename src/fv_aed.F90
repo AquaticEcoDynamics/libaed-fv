@@ -2021,7 +2021,7 @@ SUBROUTINE Particles(column, count, parts)
             zz(17:18) = particle_groups(grp)%tstat(1:2,prt)   !Birth and Age
             zz(19) = particle_groups(grp)%istat(stat, prt)    !Status
 
-            CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
+       !MH     CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here  !TEMPORARY DISABLED 
 
            !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
             particle_groups(grp)%prop(particle_groups(grp)%id_uvw0, prt)   = zz(1)
