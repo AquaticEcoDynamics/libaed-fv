@@ -1164,38 +1164,40 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
    INTEGER :: i
 !-------------------------------------------------------------------------------
 !BEGIN
-   flux_pel = zero_
-   flux_atm = zero_
-   flux_ben = zero_
-   flux_rip = zero_
 
-   !# Start with updating column diagnostics (currently only used for light)
+   flux_pel = zero_ ;  flux_atm = zero_ ;  flux_ben = zero_ ;  flux_rip = zero_
+
+   !#-- SURFACE ----------------------------------------------------------------
+   !# Calculate above-water items & temporal derivatives due to air-water exchange
+   CALL aed_calculate_surface(column, 1)
+
+   !# Distribute any surface fluxes into uppermost surface layer
+   IF ( do_2d_atm_flux .OR. count > 1 ) &
+      flux_pel(:,1) = flux_pel(:,1) + flux_atm(:)/h(1)
+
+   !#-- COLUMN ----------------------------------------------------------------
+   !# Now update any column diagnostics (e.g., used for light)
    DO i=1, count
-!     layer_map(i) = 1 + count-i
+    ! layer_map(i) = 1 + count-i
       layer_map(i) = i
    ENDDO
    CALL aed_calculate_column(column, layer_map)
 
-   !# Calculate temporal derivatives due to air-water exchange.
-   CALL aed_calculate_surface(column, 1)
-
-   !# Distribute the fluxes into pelagic surface layer
-   IF ( do_2d_atm_flux .OR. count > 1 ) &
-      flux_pel(:,1) = flux_pel(:,1) + flux_atm(:)/h(1)
-
+   !#-- BENTHIC ----------------------------------------------------------------
+   !# Calculate sediment/benthic items & temporal derivatives due to benthic exchange
    IF ( do_zone_averaging ) THEN
       flux_pel(:,count) = flux_pel(:,count) + flux_pelz(:,z) !/h(count)
 
-      !# Calculate temporal derivatives due to benthic exchange processes.
       CALL aed_calculate_benthic(column, count, .FALSE.)
    ELSE
       CALL aed_calculate_benthic(column, count)
    ENDIF
 
-   !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
+   !# Distribute bottom flux into bottom water layer (i.e., divide by layer height)
    flux_pel(:,count) = flux_pel(:,count)/h(count)
 
-   !# Add pelagic sink and source terms for all depth levels.
+   !#-- ALL CELLS --------------------------------------------------------------
+   !# Add pelagic sink and source terms for all depth levels
    DO i=1,count
       CALL aed_calculate(column, i)
    ENDDO
@@ -1325,6 +1327,9 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
    yearday = day_of_year(time) ! calc from time
 
+print *,'time',time,yearday
+
+!PAUSE
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
    IF ( .NOT. reinited )  CALL re_initialize()
