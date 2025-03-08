@@ -142,7 +142,7 @@ MODULE fv_aed
    LOGICAL  :: have_nearest = .FALSE.
    LOGICAL  :: reinited = .FALSE.
    INTEGER  :: ThisStep = 0
-   INTEGER  :: n_cellids = 0
+   INTEGER  :: n_colnids = 0
 
 !  %% NAMELIST   %%  /aed_bio/
    INTEGER  :: solution_method = 1
@@ -186,7 +186,7 @@ MODULE fv_aed
    AED_REAL :: wave_factor =  1.0
 
    LOGICAL  :: display_minmax = .FALSE.
-   INTEGER  :: display_cellid(10) = -99
+   INTEGER  :: display_colnid(10) = -99
 
    AED_REAL :: nir_frac =  0.52   ! 0.51
    AED_REAL :: par_frac =  0.43   ! 0.45
@@ -239,7 +239,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                       do_limiter, glob_min, glob_max, no_glob_lim,             &
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
-                      display_cellid, depress_clutch,                          &
+                      display_colnid, depress_clutch,                          &
                       nir_frac,par_frac,uva_frac,uvb_frac, longitude,latlat
 !
 !-------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    min_water_depth     = 0.0401
    link_wave_stress    = .false.
    display_minmax      = .false.
-   display_cellid      = -99
+   display_colnid      = -99
 
    ! Process input file (aed.nml) to get run options
    print *, "    initialise aed_core "
@@ -448,8 +448,8 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    CLOSE(namlst)
 
    DO i=1,10
-     IF ( display_cellid(i) /= -99 ) THEN
-         n_cellids = n_cellids + 1
+     IF ( display_colnid(i) /= -99 ) THEN
+         n_colnids = n_colnids + 1
      ELSE
          EXIT
      ENDIF
@@ -1306,7 +1306,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
 
-   INTEGER :: i, j, col, lev, v, d
+   INTEGER :: i, j, col, lev, v, d, sv
    AED_REAL,DIMENSION(:),POINTER :: tpar
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
@@ -1319,17 +1319,15 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
 !$OMP BARRIER
 !$OMP SINGLE
-   print *,"    START do_aed_models"
 
    !#--------------------------------------------------------------------
    !# START-UP JOBS
+
    rainloss = zero_
 
    yearday = day_of_year(time) ! calc from time
+   print *,"    START do_aed_models : ",yearday 
 
-print *,'time',time,yearday
-
-!PAUSE
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
    IF ( .NOT. reinited )  CALL re_initialize()
@@ -1445,49 +1443,74 @@ print *,'time',time,yearday
    IF ( ThisStep >= n_equil_substep ) ThisStep = 0
 
 !$OMP SINGLE
+
+   !#--------------------------------------------------------------------
+   !# OPTIONAL VERBOSE OUTPUT
+   ! screen output of min/max values of all variables across the domain
    IF ( display_minmax ) THEN
-      v = 0; d = 0
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
-               WRITE(*,'(1X,"VarLims: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'VarLims',v,TRIM(tv%name),MINVAL(cc(v,:)),MAXVAL(cc(v,:))
+               IF ( tv%sheet ) THEN
+                  sv = sv + 1
+                  ! write out benthic (sheet) state variable detail
+                  WRITE(*,'(1X,"Var2Lim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                        n_vars+sv,MINVAL(cc(n_vars+sv,:)),MAXVAL(cc(n_vars+sv,:)),TRIM(tv%name),TRIM(tv%units)
+               ELSE
+                  v = v + 1
+                  ! write out water column state variable detail
+                  WRITE(*,'(1X,"Var3Lim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
+               ENDIF
             ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
                d = d + 1
-               WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'DiagLim',d,TRIM(tv%name),MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:))
+               ! write out diagnostic variable detail
+               WRITE(*,'(1X,"DiagLim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
             ENDIF
          ENDIF
       ENDDO
    ENDIF
-
-   IF ( n_cellids > 0 ) THEN
-      v = 0; d = 0
+   ! screen output of min/max across the domain, and specified column, of all variables 
+   IF ( n_colnids > 0 ) THEN
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
+               IF ( tv%sheet ) THEN
+                  sv = sv + 1
+               ELSE
+                  v = v + 1
+               ENDIF
             ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
                d = d + 1
             ENDIF
-            DO j = 1, n_cellids
-               lev = display_cellid(j)   !MH this is the 3D cell, we should make surface cell of 2D column to link to SMS
+            DO j = 1, n_colnids
                IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-                  WRITE(*,'(1X,"Var: ",I0,1X,"<=> ",f15.8,f15.8," : ",A, " cell: ",f15.8)') &
-                              v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name), cc(v,lev)
+                  IF ( tv%sheet ) THEN
+                  ! write out benthic (sheet) state variable detail
+                     WRITE(*,'(1X,"Var2: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)') &
+                     n_vars+sv,MINVAL(cc(n_vars+sv,:)),MAXVAL(cc(n_vars+sv,:)),                                      &
+                     cc(n_vars+sv,surf_map(display_colnid(j))),cc(n_vars+sv,benth_map(display_colnid(j))),TRIM(tv%name)
+                  ELSE
+                  ! write out water column state variable detail
+                     WRITE(*,'(1X,"Var3: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)') &
+                     v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),                                                              &
+                     cc(v,surf_map(display_colnid(j))),cc(v,benth_map(display_colnid(j))),TRIM(tv%name)
+                  ENDIF 
                ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
-                  WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ", A, " cell: ",f15.8)') &
-                              d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name), cc_diag(d,lev)
+                  ! write out diagnostic variable detail
+                  WRITE(*,'(1X,"Diag: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)')    &
+                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),                                               &
+                          cc_diag(d,surf_map(display_colnid(j))),cc_diag(d,benth_map(display_colnid(j))),TRIM(tv%name)
                ENDIF
             ENDDO
          ENDIF
-      ENDDO  ! cellids
+      ENDDO  ! cell /column ids
    ENDIF
 
-    print *,"    Finished AED step"
+   print *,"    FINISH do_aed_models" 
 
 !$OMP END SINGLE
 
