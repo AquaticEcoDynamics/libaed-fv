@@ -471,7 +471,7 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    INTEGER,POINTER,DIMENSION(:),INTENT(in)    :: sm, bm
 !
 !LOCALS
-   INTEGER :: rc, av, v, sv, d, sd
+   INTEGER :: rc, av, v, sv, d, sd, i
    TYPE(aed_variable_t),POINTER :: tv
 !
 !-------------------------------------------------------------------------------
@@ -527,10 +527,13 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    v = 0 ; sv = 0;
    DO av=1,n_aed_vars
       IF ( .NOT.  aed_get_var(av, tv) ) STOP "ERROR getting variable info"
-      IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither global nor diagnostic variable
+      IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither environment nor diagnostic variable
          IF ( tv%sheet ) THEN
             sv = sv + 1
-            cc(n_vars+sv, :) = tv%initial
+            cc(n_vars+sv, :) = zero_
+            DO i=1,ubound(bm, 1)
+               cc(n_vars+sv, bm(i)) = tv%initial
+            ENDDO
          ELSE
             v = v + 1
             cc(v,:) = tv%initial
@@ -695,7 +698,7 @@ CONTAINS
    !----------------------------------------------------------------------------
    USE aed_csv_reader
    !ARGUMENTS
-      INTEGER,INTENT(in) :: nrows
+      INTEGER,INTENT(in) :: nrows ! number of rows in the csv should b number of simulated columns
    !
    !LOCALS
       INTEGER :: unit, nccols, ccol, crow
@@ -1218,20 +1221,34 @@ SUBROUTINE check_states(top, bot)
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
-   INTEGER i,v,d,lev
+   INTEGER i,v,d,lev,sv
 !
 !-------------------------------------------------------------------------------
 !BEGIN
    DO lev=top, bot
       !CALL aed_equilibrate(column, lev)
-      v = 0; d = 0
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
+               IF( tv%sheet ) THEN
+                  sv = sv + 1
+               ELSE
+                  v = v + 1
+               ENDIF
                IF ( do_limiter ) THEN
                   IF ( .NOT. ieee_is_nan(min_(v)) ) THEN
-                     IF ( cc(v, lev) < min_(v) ) cc(v, lev) = min_(v)
+                     IF( tv%sheet ) THEN
+                       ! Benthic state variable
+                       IF (lev == bot) THEN
+                         IF ( cc(n_vars+sv, lev) < min_(n_vars+sv) ) cc(n_vars+sv, lev) = min_(n_vars+sv)
+                         !MH this will add biomass to non-active zones
+                       ELSE
+                         cc(n_vars+sv, lev) = zero_ ! water column cells that are not bottom are zeroed
+                       ENDIF
+                     ELSE ! Normal state variable
+                       IF ( cc(v, lev) < min_(v) ) cc(v, lev) = min_(v)
+                     ENDIF
                   ELSE IF (.NOT. no_glob_lim) THEN
                      IF ( cc(v, lev) < glob_min ) THEN
                         print*, "Variable ", v, TRIM(tv%name), " below global min", cc(v, lev)
