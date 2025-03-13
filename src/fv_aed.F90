@@ -31,7 +31,7 @@
 
 #include "aed.h"
 
-#define FV_AED_VERS "2.2.5"
+#define FV_AED_VERS "2.3.0"
 
 #ifndef DEBUG
 #define DEBUG      0
@@ -142,7 +142,7 @@ MODULE fv_aed
    LOGICAL  :: have_nearest = .FALSE.
    LOGICAL  :: reinited = .FALSE.
    INTEGER  :: ThisStep = 0
-   INTEGER  :: n_cellids = 0
+   INTEGER  :: n_colnids = 0
 
 !  %% NAMELIST   %%  /aed_bio/
    INTEGER  :: solution_method = 1
@@ -186,7 +186,7 @@ MODULE fv_aed
    AED_REAL :: wave_factor =  1.0
 
    LOGICAL  :: display_minmax = .FALSE.
-   INTEGER  :: display_cellid(10) = -99
+   INTEGER  :: display_colnid(10) = -99
 
    AED_REAL :: nir_frac =  0.52   ! 0.51
    AED_REAL :: par_frac =  0.43   ! 0.45
@@ -239,7 +239,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                       do_limiter, glob_min, glob_max, no_glob_lim,             &
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
-                      display_cellid, depress_clutch,                          &
+                      display_colnid, depress_clutch,                          &
                       nir_frac,par_frac,uva_frac,uvb_frac, longitude,latlat
 !
 !-------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    min_water_depth     = 0.0401
    link_wave_stress    = .false.
    display_minmax      = .false.
-   display_cellid      = -99
+   display_colnid      = -99
 
    ! Process input file (aed.nml) to get run options
    print *, "    initialise aed_core "
@@ -448,8 +448,8 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    CLOSE(namlst)
 
    DO i=1,10
-     IF ( display_cellid(i) /= -99 ) THEN
-         n_cellids = n_cellids + 1
+     IF ( display_colnid(i) /= -99 ) THEN
+         n_colnids = n_colnids + 1
      ELSE
          EXIT
      ENDIF
@@ -471,7 +471,7 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    INTEGER,POINTER,DIMENSION(:),INTENT(in)    :: sm, bm
 !
 !LOCALS
-   INTEGER :: rc, av, v, sv, d, sd
+   INTEGER :: rc, av, v, sv, d, sd, i
    TYPE(aed_variable_t),POINTER :: tv
 !
 !-------------------------------------------------------------------------------
@@ -527,10 +527,13 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    v = 0 ; sv = 0;
    DO av=1,n_aed_vars
       IF ( .NOT.  aed_get_var(av, tv) ) STOP "ERROR getting variable info"
-      IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither global nor diagnostic variable
+      IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither environment nor diagnostic variable
          IF ( tv%sheet ) THEN
             sv = sv + 1
-            cc(n_vars+sv, :) = tv%initial
+            cc(n_vars+sv, :) = zero_
+            DO i=1,ubound(bm, 1)
+               cc(n_vars+sv, bm(i)) = tv%initial
+            ENDDO
          ELSE
             v = v + 1
             cc(v,:) = tv%initial
@@ -695,7 +698,7 @@ CONTAINS
    !----------------------------------------------------------------------------
    USE aed_csv_reader
    !ARGUMENTS
-      INTEGER,INTENT(in) :: nrows
+      INTEGER,INTENT(in) :: nrows ! number of rows in the csv should b number of simulated columns
    !
    !LOCALS
       INTEGER :: unit, nccols, ccol, crow
@@ -1164,38 +1167,40 @@ SUBROUTINE calculate_fluxes(column, count, z, flux_pel, flux_atm, flux_ben, flux
    INTEGER :: i
 !-------------------------------------------------------------------------------
 !BEGIN
-   flux_pel = zero_
-   flux_atm = zero_
-   flux_ben = zero_
-   flux_rip = zero_
 
-   !# Start with updating column diagnostics (currently only used for light)
+   flux_pel = zero_ ;  flux_atm = zero_ ;  flux_ben = zero_ ;  flux_rip = zero_
+
+   !#-- SURFACE ----------------------------------------------------------------
+   !# Calculate above-water items & temporal derivatives due to air-water exchange
+   CALL aed_calculate_surface(column, 1)
+
+   !# Distribute any surface fluxes into uppermost surface layer
+   IF ( do_2d_atm_flux .OR. count > 1 ) &
+      flux_pel(:,1) = flux_pel(:,1) + flux_atm(:)/h(1)
+
+   !#-- COLUMN ----------------------------------------------------------------
+   !# Now update any column diagnostics (e.g., used for light)
    DO i=1, count
-!     layer_map(i) = 1 + count-i
+    ! layer_map(i) = 1 + count-i
       layer_map(i) = i
    ENDDO
    CALL aed_calculate_column(column, layer_map)
 
-   !# Calculate temporal derivatives due to air-water exchange.
-   CALL aed_calculate_surface(column, 1)
-
-   !# Distribute the fluxes into pelagic surface layer
-   IF ( do_2d_atm_flux .OR. count > 1 ) &
-      flux_pel(:,1) = flux_pel(:,1) + flux_atm(:)/h(1)
-
+   !#-- BENTHIC ----------------------------------------------------------------
+   !# Calculate sediment/benthic items & temporal derivatives due to benthic exchange
    IF ( do_zone_averaging ) THEN
       flux_pel(:,count) = flux_pel(:,count) + flux_pelz(:,z) !/h(count)
 
-      !# Calculate temporal derivatives due to benthic exchange processes.
       CALL aed_calculate_benthic(column, count, .FALSE.)
    ELSE
       CALL aed_calculate_benthic(column, count)
    ENDIF
 
-   !# Distribute bottom flux into pelagic over bottom box (i.e., divide by layer height).
+   !# Distribute bottom flux into bottom water layer (i.e., divide by layer height)
    flux_pel(:,count) = flux_pel(:,count)/h(count)
 
-   !# Add pelagic sink and source terms for all depth levels.
+   !#-- ALL CELLS --------------------------------------------------------------
+   !# Add pelagic sink and source terms for all depth levels
    DO i=1,count
       CALL aed_calculate(column, i)
    ENDDO
@@ -1216,20 +1221,34 @@ SUBROUTINE check_states(top, bot)
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
-   INTEGER i,v,d,lev
+   INTEGER i,v,d,lev,sv
 !
 !-------------------------------------------------------------------------------
 !BEGIN
    DO lev=top, bot
       !CALL aed_equilibrate(column, lev)
-      v = 0; d = 0
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
+               IF( tv%sheet ) THEN
+                  sv = sv + 1
+               ELSE
+                  v = v + 1
+               ENDIF
                IF ( do_limiter ) THEN
                   IF ( .NOT. ieee_is_nan(min_(v)) ) THEN
-                     IF ( cc(v, lev) < min_(v) ) cc(v, lev) = min_(v)
+                     IF( tv%sheet ) THEN
+                       ! Benthic state variable
+                       IF (lev == bot) THEN
+                         IF ( cc(n_vars+sv, lev) < min_(n_vars+sv) ) cc(n_vars+sv, lev) = min_(n_vars+sv)
+                         !MH this will add biomass to non-active zones
+                       ELSE
+                         cc(n_vars+sv, lev) = zero_ ! water column cells that are not bottom are zeroed
+                       ENDIF
+                     ELSE ! Normal state variable
+                       IF ( cc(v, lev) < min_(v) ) cc(v, lev) = min_(v)
+                     ENDIF
                   ELSE IF (.NOT. no_glob_lim) THEN
                      IF ( cc(v, lev) < glob_min ) THEN
                         print*, "Variable ", v, TRIM(tv%name), " below global min", cc(v, lev)
@@ -1304,7 +1323,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
 
-   INTEGER :: i, j, col, lev, v, d
+   INTEGER :: i, j, col, lev, v, d, sv
    AED_REAL,DIMENSION(:),POINTER :: tpar
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
@@ -1317,13 +1336,14 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
 !$OMP BARRIER
 !$OMP SINGLE
-   print *,"    START do_aed_models"
 
    !#--------------------------------------------------------------------
    !# START-UP JOBS
+
    rainloss = zero_
 
    yearday = day_of_year(time) ! calc from time
+   print *,"    START do_aed_models : ",yearday 
 
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
@@ -1440,49 +1460,74 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    IF ( ThisStep >= n_equil_substep ) ThisStep = 0
 
 !$OMP SINGLE
+
+   !#--------------------------------------------------------------------
+   !# OPTIONAL VERBOSE OUTPUT
+   ! screen output of min/max values of all variables across the domain
    IF ( display_minmax ) THEN
-      v = 0; d = 0
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
-               WRITE(*,'(1X,"VarLims: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'VarLims',v,TRIM(tv%name),MINVAL(cc(v,:)),MAXVAL(cc(v,:))
+               IF ( tv%sheet ) THEN
+                  sv = sv + 1
+                  ! write out benthic (sheet) state variable detail
+                  WRITE(*,'(1X,"Var2Lim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                        n_vars+sv,MINVAL(cc(n_vars+sv,:)),MAXVAL(cc(n_vars+sv,:)),TRIM(tv%name),TRIM(tv%units)
+               ELSE
+                  v = v + 1
+                  ! write out water column state variable detail
+                  WRITE(*,'(1X,"Var3Lim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                          v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name),TRIM(tv%units)
+               ENDIF
             ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
                d = d + 1
-               WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
-                                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
-               !print *,'DiagLim',d,TRIM(tv%name),MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:))
+               ! write out diagnostic variable detail
+               WRITE(*,'(1X,"DiagLim: ",I3,1X,"<=> ",f15.8,f15.8," : ",A," (",A,")")') &
+                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name),TRIM(tv%units)
             ENDIF
          ENDIF
       ENDDO
    ENDIF
-
-   IF ( n_cellids > 0 ) THEN
-      v = 0; d = 0
+   ! screen output of min/max across the domain, and specified column, of all variables 
+   IF ( n_colnids > 0 ) THEN
+      v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
          IF ( aed_get_var(i, tv) ) THEN
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-               v = v + 1
+               IF ( tv%sheet ) THEN
+                  sv = sv + 1
+               ELSE
+                  v = v + 1
+               ENDIF
             ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
                d = d + 1
             ENDIF
-            DO j = 1, n_cellids
-               lev = display_cellid(j)   !MH this is the 3D cell, we should make surface cell of 2D column to link to SMS
+            DO j = 1, n_colnids
                IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
-                  WRITE(*,'(1X,"Var: ",I0,1X,"<=> ",f15.8,f15.8," : ",A, " cell: ",f15.8)') &
-                              v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),TRIM(tv%name), cc(v,lev)
+                  IF ( tv%sheet ) THEN
+                  ! write out benthic (sheet) state variable detail
+                     WRITE(*,'(1X,"Var2: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)') &
+                     n_vars+sv,MINVAL(cc(n_vars+sv,:)),MAXVAL(cc(n_vars+sv,:)),                                      &
+                     cc(n_vars+sv,surf_map(display_colnid(j))),cc(n_vars+sv,benth_map(display_colnid(j))),TRIM(tv%name)
+                  ELSE
+                  ! write out water column state variable detail
+                     WRITE(*,'(1X,"Var3: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)') &
+                     v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),                                                              &
+                     cc(v,surf_map(display_colnid(j))),cc(v,benth_map(display_colnid(j))),TRIM(tv%name)
+                  ENDIF 
                ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
-                  WRITE(*,'(1X,"DiagLim: ",I0,1X,"<=> ",f15.8,f15.8," : ", A, " cell: ",f15.8)') &
-                              d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),TRIM(tv%name), cc_diag(d,lev)
+                  ! write out diagnostic variable detail
+                  WRITE(*,'(1X,"Diag: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)')    &
+                          d,MINVAL(cc_diag(d,:)),MAXVAL(cc_diag(d,:)),                                               &
+                          cc_diag(d,surf_map(display_colnid(j))),cc_diag(d,benth_map(display_colnid(j))),TRIM(tv%name)
                ENDIF
             ENDDO
          ENDIF
-      ENDDO  ! cellids
+      ENDDO  ! cell /column ids
    ENDIF
 
-    print *,"    Finished AED step"
+   print *,"    FINISH do_aed_models" 
 
 !$OMP END SINGLE
 
@@ -2016,7 +2061,7 @@ SUBROUTINE Particles(column, count, parts)
             zz(17:18) = particle_groups(grp)%tstat(1:2,prt)   !Birth and Age
             zz(19) = particle_groups(grp)%istat(stat, prt)    !Status
 
-            CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
+       !MH     CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here  !TEMPORARY DISABLED 
 
            !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
             particle_groups(grp)%prop(particle_groups(grp)%id_uvw0, prt)   = zz(1)
