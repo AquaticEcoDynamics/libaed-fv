@@ -171,7 +171,7 @@ wq%diag_names(:) = aed_ctrl%diag_names(:)
 ! ALLOCATE LOCAL MEMORY BLOCK FOR AED WQ VARIABLES
 CALL init_var_aed_models(wq%nc3,wq%cc,wq%diag,wq%Nwat,wq%Nben, &
                                 wq%surf_map,wq%benth_map)
-                        
+
 CALL set_env_aed_models( wq%dt_update,       &
                         ! 3D env variables
                         wq%temp,            &
