@@ -1330,7 +1330,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   !# for debugging, depress flag doesn't run the aed library - allows us to 
+   !# for debugging, depress flag doesn't run the aed library - allows us to
    !#  see how much time is used by libaed calculations by not doing them
    IF (depress_clutch) return
 
@@ -1343,7 +1343,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    rainloss = zero_
 
    yearday = day_of_year(time) ! calc from time
-   print *,"    START do_aed_models : ",yearday 
+   print *,"    START do_aed_models : ",yearday
 
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
@@ -1489,7 +1489,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
          ENDIF
       ENDDO
    ENDIF
-   ! screen output of min/max across the domain, and specified column, of all variables 
+   ! screen output of min/max across the domain, and specified column, of all variables
    IF ( n_colnids > 0 ) THEN
       v = 0; d = 0; sv = 0
       DO i=1,n_aed_vars
@@ -1515,7 +1515,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
                      WRITE(*,'(1X,"Var3: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)') &
                      v,MINVAL(cc(v,:)),MAXVAL(cc(v,:)),                                                              &
                      cc(v,surf_map(display_colnid(j))),cc(v,benth_map(display_colnid(j))),TRIM(tv%name)
-                  ENDIF 
+                  ENDIF
                ELSE IF ( tv%diag .AND. .NOT. no_glob_lim ) THEN
                   ! write out diagnostic variable detail
                   WRITE(*,'(1X,"Diag: ",I3,1X,"<=> ",f14.5,f14.5, " => surf: ",f11.3, " bott: ",f11.3, " : ",A)')    &
@@ -1527,7 +1527,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       ENDDO  ! cell /column ids
    ENDIF
 
-   print *,"    FINISH do_aed_models" 
+   print *,"    FINISH do_aed_models"
 
 !$OMP END SINGLE
 
@@ -2061,7 +2061,7 @@ SUBROUTINE Particles(column, count, parts)
             zz(17:18) = particle_groups(grp)%tstat(1:2,prt)   !Birth and Age
             zz(19) = particle_groups(grp)%istat(stat, prt)    !Status
 
-       !MH     CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here  !TEMPORARY DISABLED 
+       !MH     CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here  !TEMPORARY DISABLED
 
            !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
             particle_groups(grp)%prop(particle_groups(grp)%id_uvw0, prt)   = zz(1)
