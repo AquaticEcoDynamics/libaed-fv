@@ -1221,7 +1221,7 @@ SUBROUTINE check_states(top, bot)
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
-   INTEGER i,v,d,lev,sv
+   INTEGER i,v,d,lev,sv,idx
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1233,34 +1233,44 @@ SUBROUTINE check_states(top, bot)
             IF ( .NOT. (tv%diag .OR. tv%extern) ) THEN
                IF( tv%sheet ) THEN
                   sv = sv + 1
+                  idx = n_vars + sv
                ELSE
                   v = v + 1
+                  idx = v
                ENDIF
                IF ( do_limiter ) THEN
-                  IF ( .NOT. ieee_is_nan(min_(v)) ) THEN
+                  IF ( .NOT. ieee_is_nan(min_(idx)) ) THEN
                      IF( tv%sheet ) THEN
                        ! Benthic state variable
                        IF (lev == bot) THEN
-                         IF ( cc(n_vars+sv, lev) < min_(n_vars+sv) ) cc(n_vars+sv, lev) = min_(n_vars+sv)
+                         IF ( cc(idx, lev) < min_(idx) ) cc(idx, lev) = min_(idx)
                          !MH this will add biomass to non-active zones
                        ELSE
-                         cc(n_vars+sv, lev) = zero_ ! water column cells that are not bottom are zeroed
+                         cc(idx, lev) = zero_ ! water column cells that are not bottom are zeroed
                        ENDIF
                      ELSE ! Normal state variable
-                       IF ( cc(v, lev) < min_(v) ) cc(v, lev) = min_(v)
+                       IF ( cc(idx, lev) < min_(idx) ) cc(idx, lev) = min_(idx)
                      ENDIF
                   ELSE IF (.NOT. no_glob_lim) THEN
-                     IF ( cc(v, lev) < glob_min ) THEN
-                        print*, "Variable ", v, TRIM(tv%name), " below global min", cc(v, lev)
-                        cc(v, lev) = MISVAL
+                     IF ( cc(idx, lev) < glob_min ) THEN
+                        print*, "Variable ", idx, TRIM(tv%name), " below global min", cc(idx, lev)
+                        cc(idx, lev) = MISVAL
                      ENDIF
                   ENDIF
-                  IF ( .NOT. ieee_is_nan(max_(v)) ) THEN
-                     IF ( cc(v, lev) > max_(v) ) cc(v, lev) = max_(v)
+                  IF ( .NOT. ieee_is_nan(max_(idx)) ) THEN
+                     IF( tv%sheet ) THEN
+                       IF (lev == bot) THEN
+                         IF ( cc(idx, lev) > max_(idx) ) cc(idx, lev) = max_(idx)
+                       ELSE
+                         cc(idx, lev) = zero_ ! water column cells that are not bottom are zeroed
+                       ENDIF
+                     ELSE
+                       IF ( cc(idx, lev) > max_(idx) ) cc(idx, lev) = max_(idx)
+                     ENDIF
                   ELSE IF (.NOT. no_glob_lim) THEN
-                     IF ( cc(v, lev) > glob_max ) THEN
-                        print*, "Variable ", v, " TRIM(tv%name), above global max", cc(v, lev)
-                        cc(v, lev) = MISVAL
+                     IF ( cc(idx, lev) > glob_max ) THEN
+                        print*, "Variable ", idx, " TRIM(tv%name), above global max", cc(idx, lev)
+                        cc(idx, lev) = MISVAL
                      ENDIF
                   ENDIF
                ENDIF
