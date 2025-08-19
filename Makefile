@@ -92,6 +92,13 @@ ifneq ($(AEDDEVDIR),)
 else
   EXTFLAG+=-DNO_DEV
 endif
+ifneq ($(AEDAPIDIR),)
+  AEDAPIDIR=../libaed-api
+  LIBAEDAPI=aed-api
+  INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
+
+  SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a
+endif
 
 FFLAGS+=$(OPT_FFLAGS)
 
@@ -112,6 +119,7 @@ INCLUDES += -I${moddir}
 
 
 FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
+FVAOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
@@ -133,6 +141,9 @@ ${libdir}/${OUTLIB}.a: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	#  aed libs at final link stage.  This ugly haque combines the necessary aed libs
 	#  into the external wq lib so there is less change to the tfv makefile
 	( cd ${objdir} ; ar -x ${AEDWATDIR}/lib/lib${LIBWATAED}.a )
+ifneq ($(AEDAPIDIR),)
+	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a )
+endif
 ifneq ($(AEDBENDIR),)
 	( cd ${objdir} ; ar -x ${AEDBENDIR}/lib/lib${LIBBENAED}.a )
 endif

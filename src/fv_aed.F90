@@ -166,6 +166,8 @@ MODULE fv_aed
    LOGICAL  :: link_rain_loss = .FALSE.
    LOGICAL  :: depress_clutch = .FALSE.
 
+   LOGICAL  :: link_host_time = .TRUE.
+
    !# Name of files being used to load initial values for benthic
    !  or benthic_diag vars, and the horizontal routing table for riparian flows
    CHARACTER(len=128) :: init_values_file = ''
@@ -194,7 +196,10 @@ MODULE fv_aed
    AED_REAL :: uvb_frac =  0.002  ! 0.005
 
    AED_REAL :: longitude = 0.
-   AED_REAL :: latlat = 0.
+   AED_REAL :: latlat    = 0.
+   AED_REAL :: startday  = -99.
+   AED_REAL :: aedtime   = 0.
+
 !  %% END NAMELIST   %%  /aed_bio/
 
    !# Integers storing number of variables being simulated
@@ -240,7 +245,8 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
                       display_colnid, depress_clutch,                          &
-                      nir_frac,par_frac,uva_frac,uvb_frac, longitude,latlat
+                      nir_frac,par_frac,uva_frac,uvb_frac, longitude, latlat,  &
+                      link_host_time, startday
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -283,6 +289,13 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
 
    Kw = base_par_extinction
    Ksed = tss_par_extinction
+
+   IF (.NOT.link_host_time .and. startday >0.) THEN
+     aedtime = startday
+   ELSE IF (.NOT.link_host_time .and. startday <0.) THEN
+     STOP "In aed_bio, link_host_time is false, but startday is not valid"
+   ENDIF
+
    print *,'    link options configured between TFV & AED - '
    print *,'        link_ext_par       :  ',link_ext_par
    print *,'        link_water_clarity :  ',link_water_clarity
@@ -293,6 +306,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    print *,'        link_rain_loss     :  ',link_rain_loss
    print *,'        link_particle_bgc  :  ',do_particle_bgc,' (under development)'
    print *,'        link_water_density :  ',link_water_density,' (not implemented)'
+   print *,'        link_host_time     :  ',link_host_time
 
    tv = aed_provide_global( 'temperature', 'temperature' , 'celsius' )
    tv = aed_provide_global( 'salinity', 'salinity' , 'g/kg' )
@@ -637,6 +651,7 @@ CONTAINS
                ENDIF
                DO ccol=1,nccols
                   IF ( same_str_icase(tv%name, csvnames(ccol)) ) THEN
+                     print *,'        - ', TRIM(tv%name)
                      IF (tv%diag) THEN
                         numd = numd + 1
                         dmap(numd) = ccol
@@ -665,6 +680,7 @@ CONTAINS
                IF ( vmap(v) == 0 ) CYCLE
                If ( vsheet(v) ) THEN
                   cc(vars(v), bm(t)) = extract_double(values(vmap(v)))
+                 ! IF(v==1) print *,'v1, ',t,bm(t),cc(vars(v), bm(t))
                ELSE
                   cc(vars(v), sm(t):bm(t)) = extract_double(values(vmap(v)))
                ENDIF
@@ -683,7 +699,7 @@ CONTAINS
       ENDIF
 
       meh = aed_csv_close(unit) !# don't care if close fails
-
+!STOP
       IF (ASSOCIATED(csvnames)) DEALLOCATE(csvnames)
       IF (ALLOCATED(values))    DEALLOCATE(values)
       IF (ALLOCATED(vars))      DEALLOCATE(vars)
@@ -1352,12 +1368,22 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
    rainloss = zero_
 
-   yearday = day_of_year(time) ! calc from time
-   print *,"    START do_aed_models : ",yearday
+   IF (link_host_time) THEN
+      aedtime = time
+   ELSE
+      aedtime = aedtime + dt
+   ENDIF
+   yearday = day_of_year(aedtime) ! calc from time (provided by host or optionally based on startday)
+
+   print *,"    START do_aed_models : ",yearday,time
 
    IF ( request_nearest ) CALL fill_nearest(nCols)
 
-   IF ( .NOT. reinited )  CALL re_initialize()
+   IF ( .NOT. reinited )  THEN
+      CALL re_initialize()
+      print *,"       AED re-initialize completed successfully"
+   ENDIF
+
 
    ThisStep = ThisStep + 1
 
