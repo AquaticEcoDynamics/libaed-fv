@@ -1,0 +1,63 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30907.101
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{B96693CB-938D-4973-A5F2-2BCDF75E34A6}") = "tuflowfv_external_wq-api", "tuflowfv_external_wq-api.vfproj", "{CE229908-E977-4874-96E5-F9500B3035F5}"
+	ProjectSection(ProjectDependencies) = postProject
+		{D5BA5305-6D24-46A7-B41B-BECC6E6BF233} = {D5BA5305-6D24-46A7-B41B-BECC6E6BF233}
+		{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E} = {BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}
+		{71B1A1B7-387A-4D58-8607-F9B24B896995} = {71B1A1B7-387A-4D58-8607-F9B24B896995}
+		{DD6B03EA-C505-45F1-AE15-AE29120D3620} = {DD6B03EA-C505-45F1-AE15-AE29120D3620}
+	EndProjectSection
+EndProject
+Project("{B96693CB-938D-4973-A5F2-2BCDF75E34A6}") = "libaed-fv-api", "libaed-fv-api.vfproj", "{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}"
+	ProjectSection(ProjectDependencies) = postProject
+		{71B1A1B7-387A-4D58-8607-F9B24B896995} = {71B1A1B7-387A-4D58-8607-F9B24B896995}
+	EndProjectSection
+EndProject
+Project("{B96693CB-938D-4973-A5F2-2BCDF75E34A6}") = "libaed-water", "..\..\libaed-water\win\libaed-water.vfproj", "{71B1A1B7-387A-4D58-8607-F9B24B896995}"
+EndProject
+Project("{B96693CB-938D-4973-A5F2-2BCDF75E34A6}") = "libaed-benthic", "..\..\libaed-benthic\win\libaed-benthic.vfproj", "{D5BA5305-6D24-46A7-B41B-BECC6E6BF233}"
+	ProjectSection(ProjectDependencies) = postProject
+		{71B1A1B7-387A-4D58-8607-F9B24B896995} = {71B1A1B7-387A-4D58-8607-F9B24B896995}
+	EndProjectSection
+EndProject
+Project("{B96693CB-938D-4973-A5F2-2BCDF75E34A6}") = "libaed-demo", "..\..\libaed-demo\win\libaed-demo.vfproj", "{DD6B03EA-C505-45F1-AE15-AE29120D3620}"
+	ProjectSection(ProjectDependencies) = postProject
+		{71B1A1B7-387A-4D58-8607-F9B24B896995} = {71B1A1B7-387A-4D58-8607-F9B24B896995}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CE229908-E977-4874-96E5-F9500B3035F5}.Debug|x64.ActiveCfg = Debug|x64
+		{CE229908-E977-4874-96E5-F9500B3035F5}.Debug|x64.Build.0 = Debug|x64
+		{CE229908-E977-4874-96E5-F9500B3035F5}.Release|x64.ActiveCfg = Release|x64
+		{CE229908-E977-4874-96E5-F9500B3035F5}.Release|x64.Build.0 = Release|x64
+		{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}.Debug|x64.ActiveCfg = Debug|x64
+		{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}.Debug|x64.Build.0 = Debug|x64
+		{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}.Release|x64.ActiveCfg = Release|x64
+		{BB6B1957-8195-4357-B2E0-2DAA6E5A4C6E}.Release|x64.Build.0 = Release|x64
+		{71B1A1B7-387A-4D58-8607-F9B24B896995}.Debug|x64.ActiveCfg = Debug|x64
+		{71B1A1B7-387A-4D58-8607-F9B24B896995}.Debug|x64.Build.0 = Debug|x64
+		{71B1A1B7-387A-4D58-8607-F9B24B896995}.Release|x64.ActiveCfg = Release|x64
+		{71B1A1B7-387A-4D58-8607-F9B24B896995}.Release|x64.Build.0 = Release|x64
+		{D5BA5305-6D24-46A7-B41B-BECC6E6BF233}.Debug|x64.ActiveCfg = Debug|x64
+		{D5BA5305-6D24-46A7-B41B-BECC6E6BF233}.Debug|x64.Build.0 = Debug|x64
+		{D5BA5305-6D24-46A7-B41B-BECC6E6BF233}.Release|x64.ActiveCfg = Release|x64
+		{D5BA5305-6D24-46A7-B41B-BECC6E6BF233}.Release|x64.Build.0 = Release|x64
+		{DD6B03EA-C505-45F1-AE15-AE29120D3620}.Debug|x64.ActiveCfg = Debug|x64
+		{DD6B03EA-C505-45F1-AE15-AE29120D3620}.Debug|x64.Build.0 = Debug|x64
+		{DD6B03EA-C505-45F1-AE15-AE29120D3620}.Release|x64.ActiveCfg = Release|x64
+		{DD6B03EA-C505-45F1-AE15-AE29120D3620}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3A08688B-5517-4123-8DB7-86A1289AE574}
+	EndGlobalSection
+EndGlobal
