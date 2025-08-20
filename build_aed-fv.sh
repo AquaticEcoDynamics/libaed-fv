@@ -18,6 +18,26 @@ case `uname` in
     ;;
 esac
 
+export CURDIR=`pwd`
+
+if [ "$OSTYPE" = "Msys" ] ; then
+  cd win
+
+  cmd.exe '/c build_fv.bat'
+
+  cd x64-Release
+  mkdir -p tuflowfv_external_wq
+  export VERSION=`grep FV_AED_VERS ../../src/fv_aed.F90 | grep define | cut -f2 -d\"`
+  mv tuflowfv_external_wq.??? tuflowfv_external_wq
+  powershell -Command "Compress-Archive -LiteralPath tuflowfv_external_wq -DestinationPath tuflowfv_external_wq_$VERSION.zip"
+
+  if [ ! -d ${CURDIR}/binaries/windows ] ; then
+    mkdir -p ${CURDIR}/binaries/windows
+  fi
+  cp tuflowfv_external_wq_$VERSION.zip ${CURDIR}/../binaries/windows
+  exit 0
+fi
+
 export CC=gcc
 if [ "$OSTYPE" = "FreeBSD" ] ; then
   export FC=flang
