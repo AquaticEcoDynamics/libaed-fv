@@ -89,6 +89,8 @@ endif
 ifneq ($(AEDDEVDIR),)
   LIBDEVAED=aed-dev
   SOFLAGS+=${AEDDEVDIR}/lib/lib${LIBDEVAED}.a
+  SOFLAGS+=${UTILDIR}/lib/libutil.a
+  SOFLAGS+=${PLOTDIR}/lib/libplot.a -lgd -lX11
 else
   EXTFLAG+=-DNO_DEV
 endif

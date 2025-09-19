@@ -31,7 +31,7 @@
 
 #include "aed.h"
 
-#define FV_AED_VERS "2.3.1"
+#define FV_AED_VERS "2.3.2"
 
 #ifndef DEBUG
 #define DEBUG      0
@@ -218,17 +218,18 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
 ! after return from this routine.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   INTEGER,          INTENT(in)  :: namlst
-   INTEGER,          INTENT(out) :: nwq_var,nben_var,ndiag_var
-   CHARACTER(len=*), INTENT(in)  :: dname
-   CHARACTER(len=30),ALLOCATABLE,INTENT(out) :: names(:)
-   CHARACTER(len=30),ALLOCATABLE,INTENT(out) :: bennames(:)
-   CHARACTER(len=30),ALLOCATABLE,INTENT(out) :: diagnames(:)
+   INTEGER,         INTENT(in)  :: namlst
+   INTEGER,         INTENT(out) :: nwq_var,nben_var,ndiag_var
+   CHARACTER(len=*),INTENT(in)  :: dname
+   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: names(:)
+   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: bennames(:)
+   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: diagnames(:)
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tvar
    CHARACTER(len=128)           :: tname, line
    INTEGER                      :: status, n_sd, i, j, tv
+   INTEGER                      :: sz_n, sz_bn, sz_dn
 
    CHARACTER(len=64) :: models(64)
 
@@ -252,6 +253,10 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
 !BEGIN
    print *, " "
    print *, "    using fv_aed version ", TRIM(FV_AED_VERS)
+
+   sz_n = sizeof(names(1))
+   sz_bn = sizeof(bennames(1))
+   sz_dn = sizeof(diagnames(1))
 
    ! Set default AED link options
    aed_nml_file        = 'aed.nml'
@@ -416,7 +421,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                 print*, " ERROR - finding more variables than reported"
                 EXIT
             ENDIF
-            names(j) = TRIM(tvar%name)
+            names(j) = TRIM(tvar%name(1:sz_n))
             min_(j) = tvar%minimum
             max_(j) = tvar%maximum
             line = '' ; IF(tvar%zavg) line = '  (zavg)'
@@ -434,7 +439,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                 print*, " ERROR - finding more benthic variables than reported"
                 EXIT
             ENDIF
-            bennames(j) = TRIM(tvar%name)
+            bennames(j) = TRIM(tvar%name(1:sz_bn))
             min_(nwq_var+j) = tvar%minimum
             max_(nwq_var+j) = tvar%maximum
             line = '' ; IF(tvar%zavg) line = '  (zavg)'
@@ -452,7 +457,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
                 print*, " ERROR - finding more diagnostic variables than reported"
                 EXIT
             ENDIF
-            diagnames(j) = TRIM(tvar%name)
+            diagnames(j) = TRIM(tvar%name(1:sz_dn))
             line = '' ; IF(tvar%zavg) line = '  (zavg)'
             print *,"     D(",j,") AED diagnostic variable:  ", TRIM(diagnames(j))//TRIM(line)
          ENDIF
@@ -478,6 +483,7 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
 ! Points the AED main variable arrays to those provided by the host model.
 ! At this point TuflowFV should have allocated the variable space.
 !-------------------------------------------------------------------------------
+   USE OMP_LIB  ! Required to use OpenMP functions
 !ARGUMENTS
    INTEGER,INTENT(in)                         :: nCells
    AED_REAL,POINTER,DIMENSION(:,:),INTENT(in) :: cc_, cc_diag_
@@ -485,6 +491,8 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    INTEGER,POINTER,DIMENSION(:),INTENT(in)    :: sm, bm
 !
 !LOCALS
+   INTEGER :: thread_id
+
    INTEGER :: rc, av, v, sv, d, sd, i
    TYPE(aed_variable_t),POINTER :: tv
 !
@@ -492,6 +500,10 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
 !BEGIN
    nwq = n_vars
    nwqben = n_vars_ben
+
+!$OMP PARALLEL PRIVATE(thread_id)
+   thread_id = OMP_GET_THREAD_NUM()
+!$OMP END PARALLEL
 
    print *,'    init_var_aed_models : nwq = ',nwq,' nwqben = ',nwqben
 
