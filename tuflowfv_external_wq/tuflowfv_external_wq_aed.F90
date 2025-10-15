@@ -29,6 +29,12 @@ END TYPE
 
 TYPE,EXTENDS(fvwq_class) :: fvwq_external
     LOGICAL :: init                                             ! INITIALSED STATUS
+
+    !# CAB added for light support
+    REAL(wqdk),PUBLIC :: time                                   ! model TIME
+    REAL(wqdk),PUBLIC :: latitude                               ! latitude
+    REAL(wqrk),PUBLIC,POINTER,DIMENSION(:) :: air_pres          ! AIR PRESSURE (NC2)
+
 CONTAINS
     PROCEDURE :: construct => fvwq_construct_external
     PROCEDURE :: destruct => fvwq_destruct_external

@@ -143,11 +143,6 @@ TYPE,ABSTRACT :: fvwq_class
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:,:) :: part_prop              ! PARTICLE ENVIRONMENTAL PROPERTIES (Nprop,Npart)
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:,:) :: part_mass              ! PARTICLE MASS (NWQ,Npart) i.e. ptm%part%U
 
-    !# CAB added for light support
-    REAL(wqdk),PUBLIC :: time                                          ! model TIME
-    REAL(wqdk),PUBLIC :: latitude                                      ! latitude
-    REAL(wqrk),PUBLIC,POINTER,DIMENSION(:) :: air_pres                 ! AIR PRESSURE (NC2)
-
 CONTAINS
     PROCEDURE(fvwq_construct),DEFERRED :: construct
     PROCEDURE(fvwq_destruct),DEFERRED :: destruct

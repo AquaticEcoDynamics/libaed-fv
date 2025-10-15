@@ -31,7 +31,7 @@
 
 #include "aed.h"
 
-#define FV_AED_VERS "2.3.2"
+#define FV_AED_VERS "2.3.3"
 
 #ifndef DEBUG
 #define DEBUG      0
@@ -44,7 +44,7 @@ MODULE fv_aed
    USE aed_common
    USE fv_zones
    USE ieee_arithmetic
-   USE OMP_LIB
+!  USE OMP_LIB
 
    IMPLICIT NONE
 
@@ -221,9 +221,9 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    INTEGER,         INTENT(in)  :: namlst
    INTEGER,         INTENT(out) :: nwq_var,nben_var,ndiag_var
    CHARACTER(len=*),INTENT(in)  :: dname
-   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: names(:)
-   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: bennames(:)
-   CHARACTER(len=*),ALLOCATABLE,INTENT(out) :: diagnames(:)
+   CHARACTER(len=30),ALLOCATABLE,DIMENSION(:),INTENT(out) :: names
+   CHARACTER(len=30),ALLOCATABLE,DIMENSION(:),INTENT(out) :: bennames
+   CHARACTER(len=30),ALLOCATABLE,DIMENSION(:),INTENT(out) :: diagnames
 !
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tvar
@@ -254,9 +254,9 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    print *, " "
    print *, "    using fv_aed version ", TRIM(FV_AED_VERS)
 
-   sz_n = sizeof(names(1))
-   sz_bn = sizeof(bennames(1))
-   sz_dn = sizeof(diagnames(1))
+   sz_n = 30 !sizeof(names(1))
+   sz_bn = 30 !sizeof(bennames(1))
+   sz_dn = 30 !sizeof(diagnames(1))
 
    ! Set default AED link options
    aed_nml_file        = 'aed.nml'
@@ -406,7 +406,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    IF (status /= 0) STOP 'allocate_memory(): ERROR allocating (names)'
    ALLOCATE(bennames(1:nben_var),stat=status)
    IF (status /= 0) STOP 'allocate_memory(): ERROR allocating (bennames)'
-   IF ( .NOT. ALLOCATED(diagnames) ) ALLOCATE(diagnames(ndiag_var))
+   IF ( .NOT. ALLOCATED(diagnames) ) ALLOCATE(diagnames(ndiag_var),stat=status)
    IF (status /= 0) STOP 'allocate_memory(): ERROR allocating (diagnames)'
 
    ALLOCATE(min_(1:nwq_var+nben_var)) ; ALLOCATE(max_(1:nwq_var+nben_var))
@@ -467,11 +467,11 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
    CLOSE(namlst)
 
    DO i=1,10
-     IF ( display_colnid(i) /= -99 ) THEN
+      IF ( display_colnid(i) /= -99 ) THEN
          n_colnids = n_colnids + 1
-     ELSE
+      ELSE
          EXIT
-     ENDIF
+      ENDIF
    ENDDO
 END SUBROUTINE init_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -483,7 +483,7 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
 ! Points the AED main variable arrays to those provided by the host model.
 ! At this point TuflowFV should have allocated the variable space.
 !-------------------------------------------------------------------------------
-   USE OMP_LIB  ! Required to use OpenMP functions
+!  USE OMP_LIB  ! Required to use OpenMP functions
 !ARGUMENTS
    INTEGER,INTENT(in)                         :: nCells
    AED_REAL,POINTER,DIMENSION(:,:),INTENT(in) :: cc_, cc_diag_
@@ -501,9 +501,9 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    nwq = n_vars
    nwqben = n_vars_ben
 
-!$OMP PARALLEL PRIVATE(thread_id)
-   thread_id = OMP_GET_THREAD_NUM()
-!$OMP END PARALLEL
+!!$OMP PARALLEL PRIVATE(thread_id)
+!   thread_id = OMP_GET_THREAD_NUM()
+!!$OMP END PARALLEL
 
    print *,'    init_var_aed_models : nwq = ',nwq,' nwqben = ',nwqben
 
@@ -1372,8 +1372,8 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    !#  see how much time is used by libaed calculations by not doing them
    IF (depress_clutch) return
 
-!$OMP BARRIER
-!$OMP SINGLE
+!!$OMP BARRIER
+!!$OMP SINGLE
 
    !#--------------------------------------------------------------------
    !# START-UP JOBS
@@ -1463,24 +1463,21 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       ENDDO
    ENDIF
 
-!$OMP END SINGLE
+!!$OMP END SINGLE
 
 !print*,"do pre_kinetics"
-!$OMP PARALLEL DO
+!!$OMP PARALLEL DO
    !#--------------------------------------------------------------------
    !# LOOP THROUGH COLUMNS DOING JOBS PRIOR TO THE KINETICS BEING SOLVED
    DO col=1, nCols
 !     print*,'pre_kinetics(', col, ')'
       CALL pre_kinetics(col)
    ENDDO
-!$OMP END PARALLEL DO
-
-!print*,"barrier"
-!$OMP BARRIER
-!print*,"barrier done"
+!!$OMP END PARALLEL DO
 
    IF ( do_zone_averaging ) THEN
-!$OMP SINGLE
+!!$OMP BARRIER
+!!$OMP SINGLE
       !# debug : set diag value on the bottom to the column number
       !# When doing zone averaging we do the benthic calls before the main column loop
       !# to get the pelagic fluxes icreated by benthic routiens which are then
@@ -1488,26 +1485,24 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
       CALL copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
       CALL compute_zone_benthic_fluxes(n_aed_vars)
       CALL copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
-!$OMP END SINGLE
+!!$OMP END SINGLE
    ENDIF
 
 !print*,"do wq"
-!$OMP PARALLEL DO
+!!$OMP PARALLEL DO
    !#--------------------------------------------------------------------
    !# THIS IS THE MAIN WQ SOLUTION LOOP
    DO col=1, nCols
 !     print*,'do_aed_wq(', col, ')'
       CALL do_aed_wq(col)
    ENDDO ! cols
-!$OMP END PARALLEL DO
-
-!print*,"barrier 2"
-!$OMP BARRIER
-!print*,"barrier 2 done"
+!!$OMP END PARALLEL DO
 
    IF ( ThisStep >= n_equil_substep ) ThisStep = 0
-
-!$OMP SINGLE
+!print*,"barrier 2"
+!!$OMP BARRIER
+!print*,"barrier 2 done"
+!!$OMP SINGLE
 
    !#--------------------------------------------------------------------
    !# OPTIONAL VERBOSE OUTPUT
@@ -1577,7 +1572,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 
    print *,"    FINISH do_aed_models"
 
-!$OMP END SINGLE
+!!$OMP END SINGLE
 
 CONTAINS
 
@@ -1733,7 +1728,7 @@ CONTAINS
       rainloss(col) = zero_
       aed_active_col = active(col)
       IF( h(benth_map(col))<min_water_depth ) aed_active_col = .false.  ! MH TUFLOWFV 4cm dry cells
-      IF ( .NOT.  Riparian(column, aed_active_col, shadefrac(col), rainloss(col)) ) THEN
+      IF ( .NOT. Riparian(column, aed_active_col, shadefrac(col), rainloss(col)) ) THEN
          IF ( request_nearest .AND. allocated(nearest_active) ) THEN
             na = nearest_active(col)
             ! Check for cells that are routed to dry pools
