@@ -28,37 +28,17 @@ INCLUDES+=-I${AEDWATDIR}/mod
 
 OUTLIB=libtuflowfv_external_wq
 
-ifeq ($(OSTYPE),Darwin)
-  SHARED=-dynamiclib -undefined dynamic_lookup
-  so_ext=dylib
-else
-  SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
-  so_ext=so
-endif
+SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
 
-ifeq ($(F90),ifort)
-  INCLUDES+=-I/opt/intel/include
-  DEBUG_FFLAGS=-g -traceback
-  OMPFLAG=-qopenmp
-  OPT_FFLAGS=-O3 ${OMPFLAG}
-  FFLAGS=-g -fpp -warn all -module ${moddir} -static-intel -mp1 -warn nounused $(DEFINES)
-  ifeq ($(WITH_CHECKS),true)
-    FFLAGS+=-check all -check noarg_temp_created
-  endif
-  FFLAGS+=-real-size 64
-else ifeq ($(F90),flang)
-  ifeq ($(OSTYPE),FreeBSD)
-    INCLUDES+=-I../ancillary/freebsd/mod
-  endif
-  DEBUG_FFLAGS=-g
-  OMPFLAG=-fopenmp
-  OPT_FFLAGS=-O3
-  FFLAGS=-g -fPIC -module ${moddir} $(DEFINES) $(INCLUDES)
-  ifeq ($(WITH_CHECKS),true)
-    FFLAGS+=-Mbounds
-  endif
-  FFLAGS+=-r8
+INCLUDES+=-I/opt/intel/include
+DEBUG_FFLAGS=-g -traceback
+OMPFLAG=-qopenmp
+OPT_FFLAGS=-O3 ${OMPFLAG}
+FFLAGS=-g -fpp -warn all -module ${moddir} -static-intel -mp1 -warn nounused $(DEFINES)
+ifeq ($(WITH_CHECKS),true)
+  FFLAGS+=-check all -check noarg_temp_created
 endif
+FFLAGS+=-real-size 64
 
 FFLAGS+=-fPIC
 
@@ -102,10 +82,10 @@ ifneq ($(AEDAPIDIR),)
   SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a
 endif
 
-FFLAGS+=$(OPT_FFLAGS)
-
 ifeq ($(DEBUG),true)
   FFLAGS+=$(DEBUG_FFLAGS)
+else
+  FFLAGS+=$(OPT_FFLAGS)
 endif
 
 ifeq ($(PRECISION),1)
@@ -125,7 +105,7 @@ FVAOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
-  TARGET = ${libdir}/$(OUTLIB).${so_ext}
+  TARGET = ${libdir}/$(OUTLIB).so
 else
   TARGET = ${libdir}/$(OUTLIB).a
 endif
@@ -164,10 +144,10 @@ endif
 	( cd ${objdir} ; ar -rv ../$@ *.o )
 	ranlib $@
 
-${libdir}/${OUTLIB}.${so_ext}: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
+${libdir}/${OUTLIB}.so: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	$(FC) ${SHARED} -o $@.${SOVERS}.${VERS} ${OBJECTS} ${LDFLAGS} ${SOFLAGS}
-	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@
-	ln -sf ${OUTLIB}.${so_ext}.${SOVERS}.${VERS} $@.${SOVERS}
+	ln -sf ${OUTLIB}.so.${SOVERS}.${VERS} $@
+	ln -sf ${OUTLIB}.so.${SOVERS}.${VERS} $@.${SOVERS}
 
 ${objdir}/tuflowfv_wq_api.o: tuflowfv_external_wq/tuflowfv_wq_api.f90
 	$(F90) ${FFLAGS} ${INCLUDES} -g -c $< -o $@
@@ -195,7 +175,7 @@ clean:
 	/bin/rm -f ${objdir}/*.o
 	/bin/rm -f ${moddir}/*.mod
 	/bin/rm -f ${libdir}/*.a
-	/bin/rm -f ${libdir}/*.${so_ext}*
+	/bin/rm -f ${libdir}/*.so*
 
 distclean: clean
 	/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s

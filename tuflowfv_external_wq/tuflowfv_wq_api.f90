@@ -14,6 +14,12 @@ INTEGER,PARAMETER :: wqdk = 8
 ! WQ API VERSION
 INTEGER,PARAMETER :: tuflowfv_wq_api_version = 1.0
 
+! DERIVED TYPES
+TYPE :: wqmflx
+    REAL(wqrk),PUBLIC,ALLOCATABLE,DIMENSION(:,:) :: processed_flxs
+    CHARACTER(LEN=60),PUBLIC,ALLOCATABLE,DIMENSION(:) :: processed_nms
+END TYPE
+
 ! CHANGE LOG
 ! v1.0 01/03/2021
 ! First version of tuflowfv_wq_api.  Same basic functionality as superseded tuflowfv_external_wq.
@@ -28,6 +34,7 @@ TYPE,ABSTRACT :: fvwq_ctrl_class
     INTEGER,PUBLIC :: Nwat = 0
     INTEGER,PUBLIC :: Nben = 0
     INTEGER,PUBLIC :: Ndiag = 0
+    INTEGER,PUBLIC :: Nflxcols(25) = -1
     LOGICAL,PUBLIC :: isActivated = .FALSE.
     ! The timestep may be defined by the WQ model
     ! If not specified will be defined by the driver model
@@ -90,6 +97,7 @@ TYPE,ABSTRACT :: fvwq_class
     ! WQ timestep, next update time and update status
     REAL(wqdk),PUBLIC :: dt_update                                     ! UPDATE TIMESTEP
     REAL(wqdk),PUBLIC :: t_update                                      ! NEXT UPDATE TIME
+    REAL(wqdk),PUBLIC :: t                                             ! TIME
     LOGICAL,PUBLIC :: updated                                          ! UPDATED STATUS
     ! WQ model number of constituents
     INTEGER,PUBLIC :: Nwat                                             ! NUMBER OF WQ CONSTITUENTS
@@ -131,6 +139,7 @@ TYPE,ABSTRACT :: fvwq_class
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:,:) :: cc                     ! WQ CONSTITUENT CONCENTRATIONS (NWQ,NC3)
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:,:) :: dcdt                   ! TEMPORAL DERIVATIVE OF WQ CONSTITUENTS (NWQ,NC3)
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:,:) :: diag                   ! DIAGNOSTIC WQ VARIABLES (NDIAG,NC3)
+    TYPE(wqmflx),PUBLIC,POINTER,DIMENSION(:) :: mflx                   ! DIAGNOSTIC WQ MASS FLUX DIAG VARS (NDIAG,NWQ)
     ! Arrays that control feedbacks between the models
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:) :: bioshade                 ! BIOGEOCHEMICAL LIGHT EXTINCTION COEFFICIENT RETURNED FROM WQ (NC3)
     REAL(wqrk),PUBLIC,POINTER,DIMENSION(:) :: biodrag                  ! ADDITIONAL DRAG ON FLOW FROM BIOLOGY, RETURNED FROM WQ (NC3)
