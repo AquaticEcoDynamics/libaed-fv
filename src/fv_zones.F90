@@ -1,6 +1,6 @@
 !###############################################################################
 !#                                                                             #
-!# fv_zones.F90                                                                #
+!# fv_api_zones.F90                                                            #
 !#                                                                             #
 !# Interface for FV (Finite Volume) Model to AED modules.                      #
 !#   Designed for TUFLOW-FV, released by BMT-WBM:                              #
@@ -20,20 +20,19 @@
 !#                                                                             #
 !#   -----------------------------------------------------------------------   #
 !#                                                                             #
-!# Created Apr 2015                                                            #
+!# Created Sep 2024                                                            #
 !#                                                                             #
 !###############################################################################
 
 #include "aed.h"
 
-#ifndef DEBUG
-#define DEBUG      0
-#endif
-
 !###############################################################################
-MODULE fv_zones
+MODULE fv_api_zones
 !-------------------------------------------------------------------------------
    USE aed_common
+
+   USE aed_api
+   USE aed_zones
 
    IMPLICIT NONE
 
@@ -41,6 +40,7 @@ MODULE fv_zones
 
    PUBLIC init_zones, calc_zone_areas, copy_to_zone, copy_from_zone
    PUBLIC compute_zone_benthic_fluxes, aed_initialize_zone_benthic
+   PUBLIC n_zones
    PUBLIC STOPIT
    PUBLIC zone, zm, flux_pelz, flux_benz
 
@@ -49,8 +49,12 @@ MODULE fv_zones
 
    !# Arrays for environmental variables not supplied externally.
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: zone_cc
-   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET :: zone_cc_diag
+
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: zone_cc
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET   :: zone_cc_hz
+   AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: zone_cc_diag
+   AED_REAL,DIMENSION(:,:),ALLOCATABLE,TARGET   :: zone_cc_diag_hz
+
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_area
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_temp
    AED_REAL,DIMENSION(:),  ALLOCATABLE,TARGET :: zone_salt
@@ -81,7 +85,7 @@ MODULE fv_zones
 
    AED_REAL,TARGET :: zone_taub
 
-   INTEGER :: nZones, nwq_var, nben_var, ndiag_var
+   INTEGER :: n_zones, nwq_var, nben_var, ndiag_var, n_diag_hz
 
 !#####################################################
 
@@ -129,53 +133,28 @@ SUBROUTINE init_zones(nCols, mat_id, avg, n_vars, n_vars_ben, n_vars_diag)
       zm(col) = zon
    ENDDO
    print*,"        material (benthic) zones (", nTypes, " in total) = ", mat_t(1:nTypes)
-   nZones = nTypes
+   n_zones = nTypes
 
-   ALLOCATE(zone(nZones))
-   ALLOCATE(zone_colnums(nZones))
-   DO zon=1,nZones
+!  zone_heights => theZones%zheight
+
+   ALLOCATE(zone_cc(n_zones, 1, n_vars+n_vars_ben))   ; zone_cc = zero_
+   ALLOCATE(zone_cc_hz(n_zones+1, n_vars+n_vars_ben)) ; zone_cc_hz = zero_
+
+   ALLOCATE(zone_cc_diag(n_zones, 1, ndiag_var))      ; zone_cc_diag = zero_
+   ALLOCATE(zone_cc_diag_hz(n_zones+1, n_diag_hz))    ; zone_cc_diag_hz = zero_
+
+   !# This will create n_zones and storage for things like area, temp etc
+   CALL aed_init_zones(n_zones, 1, zone_cc, zone_cc_hz, zone_cc_diag, zone_cc_diag_hz)
+
+   DO zon=1,n_zones
       zone(zon) = mat_t(zon)
       zone_colnums(zon) = zon
    ENDDO
-   ALLOCATE(zone_coldepth(nZones))
-   DEALLOCATE(mat_t)
 
-   ALLOCATE(flux_pelz(n_vars+n_vars_ben, nZones)) ; flux_pelz = 0.
-   ALLOCATE(flux_benz(n_vars+n_vars_ben, nZones)) ; flux_benz = 0.
+   ALLOCATE(flux_pelz(n_vars+n_vars_ben, n_zones)) ; flux_pelz = 0.
+   ALLOCATE(flux_benz(n_vars+n_vars_ben, n_zones)) ; flux_benz = 0.
 
    IF ( .NOT. avg ) RETURN
-
-   ALLOCATE(zone_area(nZones))
-   ALLOCATE(zone_temp(nZones))
-   ALLOCATE(zone_salt(nZones))
-   ALLOCATE(zone_rho(nZones))
-   ALLOCATE(zone_height(nZones))
-
-   ALLOCATE(zone_extc(nZones))
-   ALLOCATE(zone_tss(nZones))
-   ALLOCATE(zone_ss1(nZones))
-   ALLOCATE(zone_ss2(nZones))
-   ALLOCATE(zone_ss3(nZones))
-   ALLOCATE(zone_ss4(nZones))
-   ALLOCATE(zone_par(nZones))
-   ALLOCATE(zone_nir(nZones))
-   ALLOCATE(zone_uva(nZones))
-   ALLOCATE(zone_uvb(nZones))
-   ALLOCATE(zone_wind(nZones))
-   ALLOCATE(zone_rain(nZones))
-   ALLOCATE(zone_rainloss(nZones))
-   ALLOCATE(zone_air_temp(nZones))
-   ALLOCATE(zone_air_pres(nZones))
-   ALLOCATE(zone_humidity(nZones))
-   ALLOCATE(zone_bathy(nZones))
-   ALLOCATE(zone_I_0(nZones))
-   ALLOCATE(zone_longwave(nZones))
-!  ALLOCATE(zone_taub(nZones))
-
-   ALLOCATE(zone_count(nZones))
-
-   ALLOCATE(zone_cc(n_vars+n_vars_ben, nZones))
-   ALLOCATE(zone_cc_diag(n_vars_diag, nZones))
 
    nwq_var = n_vars
    nben_var = n_vars_ben
@@ -184,6 +163,16 @@ END SUBROUTINE init_zones
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+!###############################################################################
+! SUBROUTINE api_calc_zone_areas(aedZones, n_zones, areas, wlev, surf)
+! !-------------------------------------------------------------------------------
+! !ARGUMENTS
+!    TYPE(api_zone_t),DIMENSION(:),INTENT(inout) :: aedZones
+!    INTEGER,INTENT(in) :: n_zones
+! !
+!    AED_REAL,DIMENSION(:),INTENT(in) :: areas
+!    INTEGER,INTENT(in) :: wlev
+!    AED_REAL :: surf
 !###############################################################################
 SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
                            extcoeff, I_0, longwave, nir, par, uva, uvb, tss,   &
@@ -210,7 +199,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
    zone_area = zero_
    zone_temp = zero_
    zone_salt = zero_
-   zone_rho    = zero_
+   zone_rho  = zero_
    zone_height = zero_
    zone_extc   = zero_
    zone_tss = zero_
@@ -303,7 +292,7 @@ SUBROUTINE calc_zone_areas(nCols, active, temp, salt, h, z, area, wnd, rho,    &
 
 
    ! clean empty zones   !MH THERE WILL BE A DIVEDE BY ZERO BEFORE THIS, ABOVE.
-   do zon=1,nZones
+   do zon=1,n_zones
      !print *,"zoneidx ",zon," zone ",zone(zon)," count ",zone_count(zon)
       if (zone_count(zon) == 0) then
          zone_area(zon)     = 0.0
@@ -339,6 +328,18 @@ END SUBROUTINE calc_zone_areas
 
 
 !###############################################################################
+! SUBROUTINE api_copy_to_zone(aedZones, n_zones, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
+! !-------------------------------------------------------------------------------
+! !ARGUMENTS
+!    TYPE(api_zone_t),DIMENSION(:),INTENT(inout) :: aedZones
+!    INTEGER,INTENT(in) :: n_zones
+! !
+!    AED_REAL,DIMENSION(:,:),INTENT(in) :: x_cc
+!    AED_REAL,DIMENSION(:),INTENT(in) :: x_cc_hz
+!    AED_REAL,DIMENSION(:,:),INTENT(in) :: x_diag
+!    AED_REAL,DIMENSION(:),INTENT(in) :: x_diag_hz
+!    INTEGER,INTENT(in) :: wlev
+!###############################################################################
 SUBROUTINE copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
@@ -360,7 +361,7 @@ SUBROUTINE copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
    zone_cc = zero_
    zone_cc_diag = zero_
 
-   DO zon=1,nZones
+   DO zon=1,n_zones
       ta = 0. ; da = 0.
       DO col=1, nCols
          IF ( active(col) .AND. (zon == zm(col)) ) THEN
@@ -371,13 +372,25 @@ SUBROUTINE copy_to_zone(nCols, cc, cc_diag, area, active, benth_map)
             da = da + (cc_diag(:,bot) * fa)
          ENDIF
       ENDDO
-      zone_cc(1:nwq_var+nben_var,zon) = ta
-      zone_cc_diag(:,zon) = da
+      zone_cc(zon,1,1:nwq_var+nben_var) = ta
+      zone_cc_diag(zon,1,:) = da
    ENDDO
 END SUBROUTINE copy_to_zone
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+!###############################################################################
+! SUBROUTINE api_copy_from_zone(aedZones, n_zones, x_cc, x_cc_hz, x_diag, x_diag_hz, wlev)
+! !-------------------------------------------------------------------------------
+! !ARGUMENTS
+!    TYPE(api_zone_t),DIMENSION(:),INTENT(in) :: aedZones
+!    INTEGER,INTENT(in) :: n_zones
+! !
+!    AED_REAL,DIMENSION(:,:),INTENT(inout) :: x_cc
+!    AED_REAL,DIMENSION(:),INTENT(inout) :: x_cc_hz
+!    AED_REAL,DIMENSION(:,:),INTENT(inout) :: x_diag
+!    AED_REAL,DIMENSION(:),INTENT(inout) :: x_diag_hz
+!    INTEGER,INTENT(in) :: wlev
 !###############################################################################
 ! Copies the (sheet, diagnostic) variables from the zones to the main data block
 SUBROUTINE copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
@@ -407,7 +420,7 @@ SUBROUTINE copy_from_zone(nCols, n_aed_vars, cc_diag, active, benth_map)
          IF ( aed_get_var(i, tvar) ) THEN
             IF ( tvar%diag ) THEN
                j = j + 1
-               IF ( tvar%zavg ) cc_diag(j,bot) = zone_cc_diag(j,zon)
+               IF ( tvar%zavg ) cc_diag(j,bot) = zone_cc_diag(zon,1,j)
             ENDIF
          ENDIF
       ENDDO
@@ -429,93 +442,6 @@ END SUBROUTINE STOPIT
 
 
 !###############################################################################
-SUBROUTINE define_column_zone(column, zon, n_aed_vars)!, n_vars)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   INTEGER, INTENT(in) :: zon, n_aed_vars!, n_vars
-!
-!LOCALS
-   INTEGER :: av, i !, top, bot
-   INTEGER :: v, d, sv, sd, ev
-   TYPE(aed_variable_t),POINTER :: tvar
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   v = 0 ; d = 0; sv = 0; sd = 0 ; ev = 0
-   DO av=1,n_aed_vars
-
-      IF ( .NOT. aed_get_var(av, tvar) ) STOP "Error getting variable info"
-
-      IF ( tvar%extern ) THEN !# global variable
-         ev = ev + 1
-         SELECT CASE (tvar%name)
-            CASE ( 'temperature' ) ; column(av)%cell => zone_temp(zon:zon)
-            CASE ( 'salinity' )    ; column(av)%cell => zone_salt(zon:zon)
-            CASE ( 'density' )     ; column(av)%cell => zone_rho(zon:zon)
-            CASE ( 'layer_ht' )    ; column(av)%cell => zone_height(zon:zon)
-            CASE ( 'layer_area' )  ; column(av)%cell_sheet => zone_area(zon)
-            CASE ( 'rain' )        ; column(av)%cell_sheet => zone_rain(zon)
-            CASE ( 'rainloss' )    ; column(av)%cell_sheet => zone_rainloss(zon)
-            CASE ( 'material' )    ; column(av)%cell_sheet => zone(zon)
-            CASE ( 'bathy' )       ; column(av)%cell_sheet => zone_bathy(zon)
-            CASE ( 'extc_coef' )   ; column(av)%cell => zone_extc(zon:zon)
-            CASE ( 'tss' )         ; column(av)%cell => zone_tss(zon:zon)
-            CASE ( 'ss1' )         ; column(av)%cell => zone_ss1(zon:zon)
-            CASE ( 'ss2' )         ; column(av)%cell => zone_ss2(zon:zon)
-            CASE ( 'ss3' )         ; column(av)%cell => zone_ss3(zon:zon)
-            CASE ( 'ss4' )         ; column(av)%cell => zone_ss4(zon:zon)
-            CASE ( 'cell_vel' )    ; column(av)%cell => null() ! zone_cvel
-            CASE ( 'nir' )         ; column(av)%cell => zone_nir(zon:zon)
-            CASE ( 'par' )         ; column(av)%cell => zone_par(zon:zon)
-            CASE ( 'uva' )         ; column(av)%cell => zone_uva(zon:zon)
-            CASE ( 'uvb' )         ; column(av)%cell => zone_uvb(zon:zon)
-            CASE ( 'sed_zone' )    ; column(av)%cell_sheet => zone(zon)
-            CASE ( 'wind_speed' )  ; column(av)%cell_sheet => zone_wind(zon)
-            CASE ( 'par_sf' )      ; column(av)%cell_sheet => zone_I_0(zon)
-            CASE ( 'taub' )        ; column(av)%cell_sheet => zone_taub
-            CASE ( 'air_temp' )    ; column(av)%cell_sheet => zone_air_temp(zon)
-            CASE ( 'air_pres' )    ; column(av)%cell_sheet => zone_air_pres(zon)
-            CASE ( 'humidity' )    ; column(av)%cell_sheet => zone_humidity(zon)
-            CASE ( 'longwave' )    ; column(av)%cell_sheet => zone_longwave(zon)
-            CASE ( 'col_num' )     ; column(av)%cell_sheet => zone_colnums(zon)
-            CASE ( 'col_depth' )   ; column(av)%cell_sheet => zone_coldepth(zon)
-
-            CASE ( 'nearest_active' ) ; column(av)%cell_sheet => null() ! zone_nearest_active(col);
-            CASE ( 'nearest_depth' )  ; column(av)%cell_sheet => null() ! zone_nearest_depth(col);
-            CASE DEFAULT ; CALL STOPIT("ERROR: external variable : "//trim(tvar%name)//" : not found when setting zone environment")
-         END SELECT
-      ELSEIF ( tvar%diag ) THEN  !# Diagnostic variable
-         d = d + 1
-         IF ( tvar%sheet ) THEN
-            column(av)%cell_sheet => zone_cc_diag(d,zon)
-         ELSE
-            column(av)%cell => zone_cc_diag(d,zon:zon)
-         ENDIF
-      ELSE    !# state variable
-         IF ( tvar%sheet ) THEN
-            sv = sv + 1
-            IF ( tvar%bot ) THEN
-               column(av)%cell_sheet => zone_cc(nwq_var+sv, zon)
-            ELSEIF ( tvar%top ) THEN
-    !          column(av)%cell_sheet => zone_cc(nwq_var+sv, top)
-            ENDIF
-            column(av)%flux_ben => flux_benz(nwq_var+sv, zon)
-    !       column(av)%flux_atm => flux_atm(nwq_var+sv)
-         ELSE
-            v = v + 1
-            column(av)%cell => zone_cc(v, zon:zon)
-            column(av)%flux_pel => flux_pelz(v, zon:zon)
-            column(av)%flux_ben => flux_benz(v, zon)
-    !       column(av)%flux_atm => flux_atm(v)
-         ENDIF
-      ENDIF
-   ENDDO
-END SUBROUTINE define_column_zone
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
 SUBROUTINE aed_initialize_zone_benthic(nCols, active, n_aed_vars, cc_diag, benth_map)
 !-------------------------------------------------------------------------------
 !ARGUMENTS
@@ -531,8 +457,8 @@ SUBROUTINE aed_initialize_zone_benthic(nCols, active, n_aed_vars, cc_diag, benth
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   DO zon=1, nZones
-      zone_cc_diag(:,zon) = zero_
+   DO zon=1, n_zones
+      zone_cc_diag(zon,1,:) = zero_
 
       CALL define_column_zone(column, zon, n_aed_vars)
 
@@ -567,7 +493,7 @@ SUBROUTINE compute_zone_benthic_fluxes(n_aed_vars)
 !BEGIN
    flux_pelz = zero_ ; flux_benz = zero_
 !!$OMP DO PRIVATE(zon,column)
-   DO zon=1, nZones
+   DO zon=1, n_zones
       CALL define_column_zone(column, zon, n_aed_vars)
 
       CALL aed_calculate_benthic(column, 1, .TRUE.)
@@ -578,4 +504,4 @@ END SUBROUTINE compute_zone_benthic_fluxes
 
 
 !===============================================================================
-END MODULE fv_zones
+END MODULE fv_api_zones
