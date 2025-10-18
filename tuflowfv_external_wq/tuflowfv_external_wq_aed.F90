@@ -16,7 +16,7 @@
 
 MODULE tuflowfv_external_wq_aed
 !-------------------------------------------------------------------------------
-   USE tuflowfv_wq_api !  Version 1.0
+   USE tuflowfv_wq_api !  Version 2.0
    USE fv_aed
    USE fv_zones
 
@@ -37,7 +37,7 @@ MODULE tuflowfv_external_wq_aed
       PROCEDURE :: destruct => fvwq_ctrl_destruct_external
    END TYPE
 
-   TYPE,EXTENDS(fvwq_class) :: fvwq_external
+   TYPE,EXTENDS(fvwq_class_v2) :: fvwq_external
       LOGICAL :: init                                             ! INITIALSED STATUS
 
       !# CAB added for light support
@@ -48,17 +48,17 @@ MODULE tuflowfv_external_wq_aed
    CONTAINS
       PROCEDURE :: construct => fvwq_construct_external
       PROCEDURE :: destruct => fvwq_destruct_external
-      PROCEDURE :: initialise => fvwq_initialise_external
+      PROCEDURE,NOPASS :: initialise => fvwq_initialise_external
       PROCEDURE :: update => fvwq_update_external
    END TYPE
 
    ! MODULE PARAMETERS
    INTEGER,PARAMETER :: WQFileNum = 20
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
    CHARACTER(LEN=1),PARAMETER :: slash = '\\'
-!DEC$ ELSE ! Linux or MacOS or ...
+#else
    CHARACTER(LEN=1),PARAMETER :: slash = '/'
-!DEC$ END IF
+#endif
 
    ! MODULE OBJECTS
    TYPE(fvwq_ctrl_external),TARGET :: aed_ctrl
@@ -69,9 +69,9 @@ CONTAINS
 !###############################################################################
 SUBROUTINE fvwq_ctrl_initialise_external(ctrl)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_initialise_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_INITIALISE_EXTERNAL' :: fvwq_ctrl_initialise_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_class),POINTER,INTENT(INOUT) :: ctrl
@@ -80,7 +80,7 @@ SUBROUTINE fvwq_ctrl_initialise_external(ctrl)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   ! Associate parent contol object with this module (child) ctrl object
+   ! Associate parent control object with this module (child) ctrl object
    ctrl => aed_ctrl
    ! fvaed library does not require further initialisation
 END SUBROUTINE fvwq_ctrl_initialise_external
@@ -90,9 +90,9 @@ END SUBROUTINE fvwq_ctrl_initialise_external
 !###############################################################################
 SUBROUTINE fvwq_ctrl_check_external(ctrl,wqctrlfil,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_check_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_CHECK_EXTERNAL' :: fvwq_ctrl_check_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -127,9 +127,13 @@ SUBROUTINE fvwq_ctrl_check_external(ctrl,wqctrlfil,errstat,errmsg)
       wqDir = ''
    END IF
 
-   CALL init_aed_models(WQFileNum,wqDir,aed_ctrl%Nwat,aed_ctrl%Nben,  &
-                        aed_ctrl%Ndiag,aed_ctrl%var_names,            &
-                        aed_ctrl%ben_names,aed_ctrl%diag_names)
+   CALL init_aed_models(WQFileNum, wqDir,   &
+                        aed_ctrl%Nwat,      &
+                        aed_ctrl%Nben,      &
+                        aed_ctrl%Ndiag,     &
+                        aed_ctrl%var_names, &
+                        aed_ctrl%ben_names, &
+                        aed_ctrl%diag_names)
 
    WRITE(*,'(a)') 'Successful.'
    IF (openstat) WRITE(logunit,'(a)') 'Successful.'
@@ -141,9 +145,9 @@ END SUBROUTINE fvwq_ctrl_check_external
 SUBROUTINE fvwq_ctrl_construct_external(ctrl, wqctrlfil, runlabel, tform,      &
                                           tzero, ptm_grp_names, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_construct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_CONSTRUCT_EXTERNAL' :: fvwq_ctrl_construct_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -168,11 +172,11 @@ END SUBROUTINE fvwq_ctrl_construct_external
 
 
 !###############################################################################
-SUBROUTINE fvwq_ctrl_destruct_external(ctrl,errstat,errmsg)
+SUBROUTINE fvwq_ctrl_destruct_external(ctrl, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_destruct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_DESTRUCT_EXTERNAL' :: fvwq_ctrl_destruct_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -192,11 +196,33 @@ END SUBROUTINE fvwq_ctrl_destruct_external
 
 
 !###############################################################################
+SUBROUTINE fvwq_initialise_external(wq)
+!-------------------------------------------------------------------------------
+#ifdef _WIN32
+!DEC$ ATTRIBUTES DLLEXPORT :: fvwq_initialise_external
+#endif
+!DEC$ ATTRIBUTES ALIAS : 'FVWQ_INITIALISE_EXTERNAL' :: fvwq_initialise_external
+!ARGUMENTS
+   CLASS(fvwq_class),ALLOCATABLE,INTENT(INOUT) :: wq
+!
+!LOCALS
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   ! fvaed library does not require initialisation of wq object
+!  errstat = 0; errmsg = ''
+   DEALLOCATE(wq)
+   ALLOCATE(fvwq_external :: wq)
+END SUBROUTINE fvwq_initialise_external
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
 SUBROUTINE fvwq_construct_external(wq, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_construct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CONSTRUCT_EXTERNAL' :: fvwq_construct_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
@@ -220,7 +246,7 @@ SUBROUTINE fvwq_construct_external(wq, errstat, errmsg)
    ! THIS API ROUTINE ASSUMES THAT WQ OBJECT MEMORY HAS BEEN ALLOCATED BY MAIN EXE - PERFORM SOME PARTIAL CHECKS TO CONFIRM
    IF ( .NOT. ASSOCIATED(wq%cc) .OR. .NOT. ASSOCIATED(wq%diag) ) THEN
        WRITE(*, '(a)') 'Water quality variables not associated'
-       IF (openstat) write(logunit, '(a)') 'Water quality variables not associated'
+       IF (openstat) WRITE(logunit, '(a)') 'Water quality variables not associated'
        RETURN
    ENDIF
 
@@ -232,22 +258,22 @@ SUBROUTINE fvwq_construct_external(wq, errstat, errmsg)
    CALL init_var_aed_models(wq%nc3,wq%cc,wq%diag,wq%Nwat,wq%Nben, &
                                 wq%surf_map,wq%benth_map)
 
-   CALL set_env_aed_models( wq%dt_update,   &
+   CALL set_env_aed_models(wq%dt_update,    &
                         ! 3D env variables
                         wq%temp,            &
                         wq%sal,             &
                         wq%density,         &
                         wq%thick,           &
                         wq%tss,             &
-                        wq%par,             &
+                        wq%swrad,             & ! was wq%par,             &
                         wq%vvel,            &
                         wq%hvel,            &
                         ! 3D feedback arrays
-                        wq%bioshade,        &
+                        wq%bioshade(1,:),   &   ! was wq%bioshade,        &
                         ! 2D env variables
                         wq%area,            &
-                        wq%I_0,             &
-                        wq%longwave,        &
+                        wq%swrad0,          &   ! was wq%I_0,             &
+                        wq%lwrad,           &   ! was wq%longwave,        &
                         wq%wind,            &
                         wq%precip,          &
                         wq%humidity,        &
@@ -261,7 +287,7 @@ SUBROUTINE fvwq_construct_external(wq, errstat, errmsg)
                         wq%mat_id,          &
                         wq%active,          &
                         ! 2D feedback arrays
-                        wq%biodrag,         &
+                        wq%bioblock(1,:),   &   ! was wq%biodrag,         &
                         wq%solarshade,      &
                         wq%rainloss,        &
                         ! some extras for light
@@ -278,11 +304,11 @@ END SUBROUTINE fvwq_construct_external
 
 
 !###############################################################################
-SUBROUTINE fvwq_destruct_external(wq,errstat,errmsg)
+SUBROUTINE fvwq_destruct_external(wq, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_destruct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_DESTRUCT_EXTERNAL' :: fvwq_destruct_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
@@ -312,33 +338,11 @@ END SUBROUTINE fvwq_destruct_external
 
 
 !###############################################################################
-SUBROUTINE fvwq_initialise_external(wq,errstat,errmsg)
+SUBROUTINE fvwq_update_external(wq, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
-!DEC$ ATTRIBUTES DLLEXPORT :: fvwq_initialise_external
-!DEC$ END IF
-!DEC$ ATTRIBUTES ALIAS : 'FVWQ_INITIALISE_EXTERNAL' :: fvwq_initialise_external
-!ARGUMENTS
-   CLASS(fvwq_external),INTENT(INOUT) :: wq
-   INTEGER,INTENT(OUT) :: errstat
-   CHARACTER(LEN=*),INTENT(OUT) :: errmsg
-!
-!LOCALS
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   ! fvaed library does not require initialisation of wq object
-   errstat = 0; errmsg = ''
-END SUBROUTINE fvwq_initialise_external
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE fvwq_update_external(wq,errstat,errmsg)
-!-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_update_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_UPDATE_EXTERNAL' :: fvwq_update_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
