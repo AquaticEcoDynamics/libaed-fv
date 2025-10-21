@@ -54,11 +54,11 @@ MODULE tuflowfv_external_wq_aed
 
    ! MODULE PARAMETERS
    INTEGER,PARAMETER :: WQFileNum = 20
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
    CHARACTER(LEN=1),PARAMETER :: slash = '\\'
-!DEC$ ELSE ! Linux or MacOS or ...
+#else
    CHARACTER(LEN=1),PARAMETER :: slash = '/'
-!DEC$ END IF
+#endif
 
    ! MODULE OBJECTS
    TYPE(fvwq_ctrl_external),TARGET :: aed_ctrl
@@ -69,9 +69,9 @@ CONTAINS
 !###############################################################################
 SUBROUTINE fvwq_ctrl_initialise_external(ctrl)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_initialise_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_INITIALISE_EXTERNAL' :: fvwq_ctrl_initialise_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_class),POINTER,INTENT(INOUT) :: ctrl
@@ -90,9 +90,9 @@ END SUBROUTINE fvwq_ctrl_initialise_external
 !###############################################################################
 SUBROUTINE fvwq_ctrl_check_external(ctrl,wqctrlfil,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_check_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_CHECK_EXTERNAL' :: fvwq_ctrl_check_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -141,9 +141,9 @@ END SUBROUTINE fvwq_ctrl_check_external
 SUBROUTINE fvwq_ctrl_construct_external(ctrl, wqctrlfil, runlabel, tform,      &
                                           tzero, ptm_grp_names, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_construct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_CONSTRUCT_EXTERNAL' :: fvwq_ctrl_construct_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -170,9 +170,9 @@ END SUBROUTINE fvwq_ctrl_construct_external
 !###############################################################################
 SUBROUTINE fvwq_ctrl_destruct_external(ctrl,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_ctrl_destruct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CTRL_DESTRUCT_EXTERNAL' :: fvwq_ctrl_destruct_external
 !ARGUMENTS
    CLASS(fvwq_ctrl_external),INTENT(INOUT) :: ctrl
@@ -194,9 +194,9 @@ END SUBROUTINE fvwq_ctrl_destruct_external
 !###############################################################################
 SUBROUTINE fvwq_construct_external(wq, errstat, errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_construct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_CONSTRUCT_EXTERNAL' :: fvwq_construct_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
@@ -280,9 +280,9 @@ END SUBROUTINE fvwq_construct_external
 !###############################################################################
 SUBROUTINE fvwq_destruct_external(wq,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_destruct_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_DESTRUCT_EXTERNAL' :: fvwq_destruct_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
@@ -314,9 +314,9 @@ END SUBROUTINE fvwq_destruct_external
 !###############################################################################
 SUBROUTINE fvwq_initialise_external(wq,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_initialise_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_INITIALISE_EXTERNAL' :: fvwq_initialise_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq
@@ -336,9 +336,9 @@ END SUBROUTINE fvwq_initialise_external
 !###############################################################################
 SUBROUTINE fvwq_update_external(wq,errstat,errmsg)
 !-------------------------------------------------------------------------------
-!DEC$ IF DEFINED(_WIN32) ! Windows
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: fvwq_update_external
-!DEC$ END IF
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'FVWQ_UPDATE_EXTERNAL' :: fvwq_update_external
 !ARGUMENTS
    CLASS(fvwq_external),INTENT(INOUT) :: wq

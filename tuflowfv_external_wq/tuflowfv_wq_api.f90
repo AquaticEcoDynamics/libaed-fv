@@ -193,7 +193,9 @@ END INTERFACE
 
 ! WQ API OBJECTS
 CLASS(fvwq_ctrl_class),POINTER :: wq_ctrl
+#ifdef _WIN32
 !DEC$ ATTRIBUTES DLLEXPORT :: wq_ctrl
+#endif
 !DEC$ ATTRIBUTES ALIAS : 'WQ_CTRL' :: wq_ctrl
 ! This public module object is used to enable the driver to interact with the control object, i.e.
 ! TYPE,EXTENDS(fvwq_ctrl_class) :: fvwq_ctrl_extended
