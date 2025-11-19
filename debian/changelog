@@ -1,6 +1,7 @@
-libaed-tfv (2.3.4-0) UNRELEASED; urgency=low
+libaed-tfv (2.3.6-0) UNRELEASED; urgency=low
 
   * new version 2.3.4
+  * new version 2.3.6
 
  -- Casper Boon <casper@eridanus>  Thu, 17 Oct 2025 14:44:30 +0800
 
