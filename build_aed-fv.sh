@@ -5,6 +5,8 @@ export PRECISION=1
 export PLOTS=false
 export EXTERNAL_LIBS=shared
 export DEBUG=false
+export WITH_AED_PLUS=false
+export WITH_MPI=false
 
 export LICENSE=0
 
@@ -213,6 +215,15 @@ VERSION=`grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\"`
 EXTN="_$VERSION$T$S$D"
 cd ${AEDFVDIR}/win
 ${AEDFVDIR}/vers.sh $VERSION
+if [ "$OSTYPE" = "Linux" ] ; then
+  cd ${AEDFVDIR}
+  VERSDEB=`head -1 debian/changelog | cut -f2 -d\( | cut -f1 -d-`
+  echo debian version $VERSDEB
+  if [ "$VERSION" != "$VERSDEB" ] ; then
+    echo updating debian version
+    dch --newversion ${VERSION}-0 "new version ${VERSION}"
+  fi
+fi
 cd ${CURDIR}
 
 if [ "$EXTERNAL_LIBS" = "shared" ] ; then

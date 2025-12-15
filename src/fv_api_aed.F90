@@ -1283,7 +1283,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   !# for debugging, depress flag doesn't run the aed library - allows us to 
+   !# for debugging, depress flag doesn't run the aed library - allows us to
    !#  see how much time is used by libaed calculations by not doing them
    IF (depress_clutch) return
 
