@@ -14,7 +14,7 @@
 !# Developed by :                                                              #
 !#     AquaticEcoDynamics (AED) Group                                          #
 !#     School of Agriculture and Environment                                   #
-!# (C) The University of Western Australia                                     #
+!# Copyright 2024-2026 : The University of Western Australia                   #
 !#                                                                             #
 !# Copyright by the AED-team @ UWA under the GNU Public License - www.gnu.org  #
 !#                                                                             #
