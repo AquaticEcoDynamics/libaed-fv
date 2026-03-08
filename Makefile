@@ -15,6 +15,7 @@ moddir=mod
 OSTYPE=$(shell uname -s)
 
 LIBAEDFV=aed-fv
+LIBAEDFVA=api-fv
 
 ifeq ($(MDEBUG),true)
   DEBUG=true
@@ -112,6 +113,10 @@ endif
 FFLAGS+=-Dtuflowfv_external_wq_aed=tuflowfv_external_wq
 
 all: ${TARGET}
+
+${libdir}/lib${LIBAEDFVA}.a: ${objdir} ${moddir} ${libdir} ${FVAOBJECTS}
+	ar -rv $@ ${FVAOBJECTS}
+	ranlib $@
 
 ${libdir}/lib${LIBAEDFV}.a: ${objdir} ${moddir} ${libdir} ${FVOBJECTS}
 	ar -rv $@ ${FVOBJECTS}
