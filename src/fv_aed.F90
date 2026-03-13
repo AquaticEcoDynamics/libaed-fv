@@ -1,6 +1,6 @@
 !###############################################################################
 !#                                                                             #
-!# fv_api_aed.F90                                                              #
+!# fv_aed.F90 - api version                                                    #
 !#                                                                             #
 !# Interface for FV (Finite Volume) Hydrodynamic Model to AED modules (libaed) #
 !#   Designed for TUFLOW-FV, released by BMT Pty Ltd:                          #
@@ -52,33 +52,9 @@ MODULE fv_aed
    PRIVATE
 
    PUBLIC init_aed_models,     init_var_aed_models, &
-          set_env_aed_models,  set_env_particles,   &
+          set_env_aed_models,  &! set_env_particles,   &
           do_aed_models,                            &
           clean_aed_models
-
-   !#--------------------------------------------------------------------------#
-   !# Module Types
-   TYPE :: partgroup
-      INTEGER(KIND=4) :: NP                                ! Number of Particles
-      INTEGER(KIND=4) :: id_stat, id_i2, id_i3, id_layer   ! Particle ISTAT Index Values
-      INTEGER(KIND=4) :: id_bed_layer, id_motility         ! Particle ISTAT Index Values
-      INTEGER(KIND=4) :: id_uvw0, id_uvw, id_nu, id_wnd    ! Particle PROP Index Values
-      INTEGER(KIND=4) :: id_wsel, id_watd, id_partd        ! Particle PROP Index Values
-      INTEGER(KIND=4) :: id_age, id_state                  ! Particle TSTAT Index Values
-      INTEGER(KIND=4) :: i_next                            ! next particle index
-      INTEGER(KIND=4),POINTER,DIMENSION(:,:) :: istat      ! Particle Integer Status/Cell-index variables (4,NPart)
-      REAL(KIND=8),POINTER,DIMENSION(:,:) :: tstat         ! Particle Time/Age Vector (2,Npart)
-      REAL(KIND=8),POINTER,DIMENSION(:,:) :: xyz           ! particle position vector
-      REAL(KIND=4),POINTER,DIMENSION(:,:) :: prop          ! Particle Property Vector (12,Npart)
-      REAL(KIND=4),POINTER,DIMENSION(:,:) :: U             ! Particle Conserved Variable Vector (NU,NP)
-   ENDTYPE partgroup
-   TYPE :: partgroup_p
-      INTEGER :: idx, grp
-   ENDTYPE
-   TYPE :: partgroup_cell
-       INTEGER :: count, n
-       TYPE(partgroup_p),ALLOCATABLE,DIMENSION(:) :: prt
-   END TYPE partgroup_cell
 
    !#--------------------------------------------------------------------------#
    !# Module Data
@@ -217,15 +193,9 @@ MODULE fv_aed
 
    AED_REAL,DIMENSION(:),ALLOCATABLE,TARGET :: colnums, mat
 
-   !# Particle groups
-   INTEGER :: num_groups
-   TYPE(partgroup),DIMENSION(:),POINTER :: particle_groups
-   TYPE(partgroup_cell),DIMENSION(:),ALLOCATABLE :: all_particles
-
    !# Misc variables/options
    LOGICAL  :: request_nearest = .FALSE.
    LOGICAL  :: have_nearest = .FALSE.
-!  LOGICAL  :: reinited = .FALSE.
    INTEGER  :: ThisStep = 0
    INTEGER  :: n_cellids = 0
 
@@ -422,13 +392,6 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    cc = 0.
    IF (.not. ASSOCIATED(cc_diag) ) STOP ' ERROR : no association for (cc_diag)'
    cc_diag = 0.
-
-!  aed_data%cc => cc
-!  aed_data%cc_hz => cc(1,:)
-!  aed_data%cc_diag => cc_diag
-!  aed_data%cc_diag_hz => cc_diag(1,:)
-
-!  CALL aed_set_model_data(aed_data, nCells, MaxLayers)
 
    ! Allocate array with vertical movement rates (m/s, positive for upwards)
    ALLOCATE(ws(1:nCells,1:n_aed_vars),stat=rc)
@@ -762,6 +725,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
    INTEGER, DIMENSION(:),ALLOCATABLE :: mat_t
    TYPE(aed_env_t),DIMENSION(:),ALLOCATABLE :: aed_env
    TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
+
+   PROCEDURE(aed_mobility_fn_t),POINTER :: doMobilityP
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -897,16 +862,19 @@ SUBROUTINE set_env_aed_models(dt_,              &
    CALL aed_set_model_data(aed_data, nCols, n_layers)
    DEALLOCATE(aed_data)
 
-   IF (n_zones .GT. 0) &
-      CALL api_set_fv_zones(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
+!  IF (n_zones .GT. 0) &
+!     CALL api_set_fv_zones(n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet)
 
    CALL init_zones(ubound(mat_id_, 2), mat_id_, do_zone_averaging, n_vars, n_vars_ben, n_vars_diag)
 
 !print*,"allocating all_parts with ", ubound(temp,1), " cells"
-   ALLOCATE(all_particles(ubound(temp,1)))
+ ! ALLOCATE(all_particles(ubound(temp,1)))
 
    ALLOCATE(lon(nCols)) ; lon = longitude
    ALLOCATE(lat(nCols)) ; lat = latitude !lat_ * 57.2958 ! convert to degrees
+
+   doMobilityP => doMobilityF
+   CALL aed_set_mobility_fn(doMobilityP)
 
 END SUBROUTINE set_env_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -993,6 +961,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
    ENDIF
 
    ! if bio-active particles are running, update particle data
+#if 0
    IF (do_particle_bgc) THEN
       DO i=1, size(all_particles)
          IF (ALLOCATED(all_particles(i)%prt)) DEALLOCATE(all_particles(i)%prt)
@@ -1043,6 +1012,7 @@ SUBROUTINE do_aed_models(nCells, nCols, time)
          ENDDO
       ENDDO
    ENDIF
+#endif
 
 !$OMP END SINGLE
 
@@ -1052,26 +1022,32 @@ END SUBROUTINE do_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
+#define _UNUSED(x) if (.FALSE.) print*,shape(x)
 !###############################################################################
-SUBROUTINE clean_aed_models
+SUBROUTINE doMobilityF(N,dt,h,A,ww,min_C,mcc)
+!-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 !ARGUMENTS
+   INTEGER,INTENT(in)     :: N       !# number of vertical layers
+   AED_REAL,INTENT(in)    :: dt      !# time step (s)
+   AED_REAL,INTENT(in)    :: h(:)    !# layer thicknesses (m)
+   AED_REAL,INTENT(in)    :: A(:)    !# layer areas (m2)
+   AED_REAL,INTENT(in)    :: ww(:)   !# vertical speed (m/s)
+   AED_REAL,INTENT(in)    :: min_C   !# minimum allowed cell concentration
+   AED_REAL,INTENT(inout) :: mcc(:)  !# cell concentration
 !
 !LOCALS
+   AED_REAL :: Fsed = 0.
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   ! Deallocate internal arrays
-   IF (allocated(ws))             deallocate(ws)
-   IF (allocated(total))          deallocate(total)
-   IF (allocated(nir))            deallocate(nir)
-   IF (allocated(par))            deallocate(par)
-   IF (allocated(uva))            deallocate(uva)
-   IF (allocated(uvb))            deallocate(uvb)
-!  IF (allocated(pactive))        deallocate(pactive)
-END SUBROUTINE clean_aed_models
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   _UNUSED(A)
 
+   CALL Settling(N,dt,h,ww,Fsed,mcc)
+END SUBROUTINE doMobilityF
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   
+   
 
 !###############################################################################
 SUBROUTINE Settling(N,dt,h,wvel,Fsed,Y)
@@ -1155,177 +1131,24 @@ SUBROUTINE Settling(N,dt,h,wvel,Fsed,Y)
    Fsed = Fsed / dt !# Average flux rate for full time step used in AED
 END SUBROUTINE Settling
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
 !###############################################################################
-LOGICAL FUNCTION Riparian(column, actv, shade_frac, rain_loss)
-!-------------------------------------------------------------------------------
-!
-! Do riparian functionality, including operations in dry and fringing cells &
-! populate feedback arrays to the host model associated with riparian effects
-!
+SUBROUTINE clean_aed_models
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   LOGICAL,  INTENT(in)    :: actv
-   AED_REAL, INTENT(inout) :: shade_frac, rain_loss
 !
-!LOCAL VARIABLES:
-   INTEGER :: i
-   AED_REAL :: localshade
-   AED_REAL :: localrainl
+!LOCALS
 !
 !-------------------------------------------------------------------------------
 !BEGIN
-   !# compute the methods relevant to either DRY or WET cells
-   IF (.NOT. actv ) THEN
-      CALL aed_calculate_dry(column, 1);
-      CALL aed_calculate_riparian(column, 1, zero_);
-   ELSE
-      CALL aed_calculate_riparian(column, 1, one_);
-   ENDIF
-
-   !# update feedback arrays to host model, to reduce rain (or if -ve then add flow)
-   CALL aed_rain_loss(column, 1, localrainl);
-   IF (link_rain_loss) rain_loss = localrainl
-
-
-   !# update feedback arrays to shade the water (ie reduce incoming light, Io)
-   CALL aed_light_shading(column, 1, localshade)
-   IF (link_solar_shade) shade_frac = localshade
-
-   Riparian = actv
-END FUNCTION Riparian
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE Update(column,count)
-!-------------------------------------------------------------------------------
-!
-! Do non-kinetic (eg equilibrium) updates to state variables in AED modules
-!
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   INTEGER, INTENT(in) :: count
-!
-!LOCAL VARIABLES:
-   INTEGER :: lev
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   DO lev=1,count
-      CALL aed_equilibrate(column, lev)
-   ENDDO
-END SUBROUTINE Update
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE set_env_particles(ng,parts)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   INTEGER :: ng
-   TYPE(partgroup),DIMENSION(:),TARGET,INTENT(in) :: parts
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   IF (.NOT. ASSOCIATED(particle_groups)) THEN
-      particle_groups => parts
-      num_groups = ng
-   ENDIF
-END SUBROUTINE set_env_particles
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE Particles(column, count, parts)
-!-------------------------------------------------------------------------------
-!
-! Calculate biogeochemical transformations on particles !TO BE COMPLETED!
-!
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   TYPE (aed_column_t), INTENT(inout) :: column(:)
-   TYPE(partgroup_cell), INTENT(inout) :: parts(:)
-   INTEGER,  INTENT(in)    :: count
-!
-!LOCAL VARIABLES:
-   INTEGER :: lev, grp, prt, n, pt, NU
-   INTEGER :: ppid
-   AED_REAL,DIMENSION(20) :: zz
-   INTEGER :: stat, idxi3
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   IF (.NOT. ASSOCIATED(particle_groups) .OR. num_groups == 0) RETURN
-   zz = zero_
-
-   DO lev=1,count
-
-      ppid = 0          ! new cell identifier, to allow cumulation of prts
-
-      DO pt=1,parts(lev)%count
-
-         grp = parts(lev)%prt(pt)%grp ; prt = parts(lev)%prt(pt)%idx
-         stat = particle_groups(grp)%id_stat   ! should be 1
-         idxi3 =  particle_groups(grp)%id_i3   ! should be 3
-
-         IF ( particle_groups(grp)%istat(stat, prt) >= 0 ) THEN
-
-
-            NU = ubound(particle_groups(grp)%U, 1)
-            n = min(16, size(particle_groups(grp)%prop(:,prt)))
-
-          ! zz(1:n) = particle_groups(grp)%prop(1:n,prt)
-            zz(1)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw0, prt)
-            zz(2)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw0+1, prt)
-            zz(3)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw0+2, prt)
-            zz(4)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw, prt)
-            zz(5)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw+1, prt)
-            zz(6)  = particle_groups(grp)%prop(particle_groups(grp)%id_uvw+2, prt)
-            zz(7)  = particle_groups(grp)%prop(particle_groups(grp)%id_nu, prt)
-            zz(8)  = particle_groups(grp)%prop(particle_groups(grp)%id_nu+1, prt)
-            zz(9)  = particle_groups(grp)%prop(particle_groups(grp)%id_nu+2, prt)
-            zz(10) = particle_groups(grp)%prop(particle_groups(grp)%id_nu+3, prt)
-            zz(11) = particle_groups(grp)%prop(particle_groups(grp)%id_wsel, prt)
-            zz(12) = particle_groups(grp)%prop(particle_groups(grp)%id_watd, prt)
-            zz(13) = particle_groups(grp)%prop(particle_groups(grp)%id_partd, prt)
-            zz(14) = particle_groups(grp)%prop(particle_groups(grp)%id_wnd, prt) !Vvel
-
-            IF (NU > 0) zz(15) = particle_groups(grp)%U(1, prt)  !Mass
-            IF (NU > 1) zz(16) = particle_groups(grp)%U(2, prt)
-
-            zz(17:18) = particle_groups(grp)%tstat(1:2,prt)   !Birth and Age
-            zz(19) = particle_groups(grp)%istat(stat, prt)    !Status
-
-  !         CALL aed_particle_bgc(column,lev,ppid,zz)     !ppid getting incremeted in here
-
-           !particle_groups(grp)%prop(1:n,prt) = zz(1:n)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw0, prt)   = zz(1)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw0+1, prt) = zz(2)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw0+2, prt) = zz(3)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw, prt)    = zz(4)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw+1, prt)  = zz(5)
-            particle_groups(grp)%prop(particle_groups(grp)%id_uvw+2, prt)  = zz(6)
-            particle_groups(grp)%prop(particle_groups(grp)%id_nu, prt)     = zz(7)
-            particle_groups(grp)%prop(particle_groups(grp)%id_nu+1, prt)   = zz(8)
-            particle_groups(grp)%prop(particle_groups(grp)%id_nu+2, prt)   = zz(9)
-            particle_groups(grp)%prop(particle_groups(grp)%id_nu+3, prt)   = zz(10)
-            particle_groups(grp)%prop(particle_groups(grp)%id_wsel, prt)   = zz(11)
-            particle_groups(grp)%prop(particle_groups(grp)%id_watd, prt)   = zz(12)
-            particle_groups(grp)%prop(particle_groups(grp)%id_partd, prt)  = zz(13)
-            particle_groups(grp)%prop(particle_groups(grp)%id_wnd, prt)    = zz(14)
-
-            IF (NU > 0) particle_groups(grp)%U(1, prt) = zz(15)
-            IF (NU > 1) particle_groups(grp)%U(2, prt) = zz(16)
-            particle_groups(grp)%istat(stat, prt) = zz(19)
-         ENDIF
-         particle_groups(grp)%tstat(2,prt) = particle_groups(grp)%tstat(2,prt) + dt
-      ENDDO
-   ENDDO
-END SUBROUTINE Particles
+   ! Deallocate internal arrays
+   IF (allocated(ws))             deallocate(ws)
+   IF (allocated(total))          deallocate(total)
+   IF (allocated(nir))            deallocate(nir)
+   IF (allocated(par))            deallocate(par)
+   IF (allocated(uva))            deallocate(uva)
+   IF (allocated(uvb))            deallocate(uvb)
+!  IF (allocated(pactive))        deallocate(pactive)
+END SUBROUTINE clean_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
