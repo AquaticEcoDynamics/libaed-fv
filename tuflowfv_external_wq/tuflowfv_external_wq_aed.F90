@@ -18,7 +18,7 @@ MODULE tuflowfv_external_wq_aed
 !-------------------------------------------------------------------------------
    USE tuflowfv_wq_api !  Version 1.0
    USE fv_aed
-   USE fv_zones
+!  USE fv_zones
 
    IMPLICIT NONE
 

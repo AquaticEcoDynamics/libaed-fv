@@ -101,7 +101,8 @@ TFFLAGS += -g -DAED -DEXTERNAL_WQ=2
 INCLUDES += -I${moddir}
 
 
-FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
+FVOBJECTS=${objdir}/fv_aed.o
+#FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
 FVAOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
