@@ -40,7 +40,6 @@ MODULE fv_aed
    USE aed_util
    USE aed_common
    USE aed_api
-!  USE fv_zones
    USE aed_zones
    USE ieee_arithmetic
    USE OMP_LIB
@@ -94,7 +93,7 @@ MODULE fv_aed
    AED_REAL,DIMENSION(:),POINTER :: lpar
    AED_REAL,TARGET :: col_taub  ! a temp var for bottom stress (computed from ustar_bed)
 
-   !# To support light - CAB these need to be passed in from tuflow
+   !# To support light
    AED_REAL,TARGET :: yearday
    AED_REAL :: part_day_per_step
    AED_REAL,DIMENSION(:),ALLOCATABLE,TARGET :: lon
