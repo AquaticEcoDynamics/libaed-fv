@@ -55,7 +55,7 @@ MODULE fv_aed
    !#--------------------------------------------------------------------------#
    !# Module Data
 
-   AED_REAL :: Kw, Ksed
+   AED_REAL,TARGET :: Kw, Ksed
 
    !# Main arrays storing/pointing to the state and diagnostic variables
    AED_REAL,DIMENSION(:,:),POINTER :: cc,    cc_diag
@@ -326,8 +326,7 @@ SUBROUTINE init_aed_models(namlst,dname,nwq_var,nben_var,ndiag_var,names,benname
 !  cpl%sw_factor = sw_factor
 !  cpl%friction = friction
 
-   cpl%Kw = Kw
-!  cpl%dt = dt
+   cpl%Kw => Kw
 
    CALL aed_set_coupling(cpl)
 

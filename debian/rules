@@ -4,7 +4,8 @@ package=libaed-tfv
 year=2025
 version=2025-aed-1
 release=0.1
-wqvers=$(shell grep FV_AED_VERS $(CURDIR)/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+#wqvers=$(shell grep FV_AED_VERS $(CURDIR)/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+wqvers=$(shell grep FV_AED_API_VERS $(CURDIR)/src/fv_aed.F90 | head -1 | cut -f2 -d\")
 
 export DH_VERBOSE=1
 

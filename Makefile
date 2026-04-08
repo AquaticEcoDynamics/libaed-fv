@@ -3,7 +3,8 @@
 # with hydrodynamic driver wrapper
 #
 
-VERSION=$(shell grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+#VERSION=$(shell grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+VERSION=$(shell grep FV_AED_API_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
 SOVERS=$(shell echo $(VERSION) | cut -f1 -d\.)
 VERS=$(shell echo $(VERSION) | cut -f2- -d\.)
 
@@ -32,7 +33,7 @@ OUTLIB=libtuflowfv_external_wq
 SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
 
 INCLUDES+=-I/opt/intel/include
-DEBUG_FFLAGS=-g -traceback
+DEBUG_FFLAGS=-g -traceback -O3
 OMPFLAG=-qopenmp
 OPT_FFLAGS=-O3 ${OMPFLAG}
 FFLAGS=-g -fpp -warn all -module ${moddir} -static-intel -mp1 -warn nounused $(DEFINES)
@@ -77,10 +78,10 @@ else
 endif
 ifneq ($(AEDAPIDIR),)
   AEDAPIDIR=../libaed-api
-  LIBAEDAPI=aed-api
+  LIBAPIAED=aed-api
   INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
 
-  SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a
+  SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a
 endif
 
 ifeq ($(DEBUG),true)
