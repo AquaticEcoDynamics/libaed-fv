@@ -3,8 +3,7 @@
 # with hydrodynamic driver wrapper
 #
 
-#VERSION=$(shell grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
-VERSION=$(shell grep FV_AED_API_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
+VERSION=$(shell grep FV_AED_VERS ${AEDFVDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\")
 SOVERS=$(shell echo $(VERSION) | cut -f1 -d\.)
 VERS=$(shell echo $(VERSION) | cut -f2- -d\.)
 
@@ -16,7 +15,6 @@ moddir=mod
 OSTYPE=$(shell uname -s)
 
 LIBAEDFV=aed-fv
-LIBAEDFVA=api-fv
 
 ifeq ($(MDEBUG),true)
   DEBUG=true
@@ -44,8 +42,14 @@ FFLAGS+=-real-size 64
 
 FFLAGS+=-fPIC
 
+ifneq ($(AEDAPIDIR),)
+  AEDAPIDIR=../libaed-api
+  LIBAEDAPI=aed-api
+  INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
+endif
+
 LIBWATAED=aed-water
-SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
+SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
 
 EXTFLAG=
 ifneq ($(AEDBENDIR),)
@@ -76,13 +80,6 @@ ifneq ($(AEDDEVDIR),)
 else
   EXTFLAG+=-DNO_DEV
 endif
-ifneq ($(AEDAPIDIR),)
-  AEDAPIDIR=../libaed-api
-  LIBAPIAED=aed-api
-  INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
-
-  SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a
-endif
 
 ifeq ($(DEBUG),true)
   FFLAGS+=$(DEBUG_FFLAGS)
@@ -101,10 +98,7 @@ endif
 TFFLAGS += -g -DAED -DEXTERNAL_WQ=2
 INCLUDES += -I${moddir}
 
-
 FVOBJECTS=${objdir}/fv_aed.o
-#FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
-FVAOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
@@ -115,10 +109,6 @@ endif
 FFLAGS+=-Dtuflowfv_external_wq_aed=tuflowfv_external_wq
 
 all: ${TARGET}
-
-${libdir}/lib${LIBAEDFVA}.a: ${objdir} ${moddir} ${libdir} ${FVAOBJECTS}
-	ar -rv $@ ${FVAOBJECTS}
-	ranlib $@
 
 ${libdir}/lib${LIBAEDFV}.a: ${objdir} ${moddir} ${libdir} ${FVOBJECTS}
 	ar -rv $@ ${FVOBJECTS}
@@ -131,7 +121,7 @@ ${libdir}/${OUTLIB}.a: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	#  into the external wq lib so there is less change to the tfv makefile
 	( cd ${objdir} ; ar -x ${AEDWATDIR}/lib/lib${LIBWATAED}.a )
 ifneq ($(AEDAPIDIR),)
-	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a )
+	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a )
 endif
 ifneq ($(AEDBENDIR),)
 	( cd ${objdir} ; ar -x ${AEDBENDIR}/lib/lib${LIBBENAED}.a )
