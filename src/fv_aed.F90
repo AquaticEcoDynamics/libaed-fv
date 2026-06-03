@@ -770,7 +770,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
 !LOCALS
    INTEGER :: col, top, bot, lev, base
    INTEGER :: nTypes, cType, zon, n_layers
-   INTEGER, DIMENSION(:),ALLOCATABLE :: mat_t
+   AED_REAL, DIMENSION(:),ALLOCATABLE,TARGET :: mat_t
    TYPE(aed_env_t),DIMENSION(:),ALLOCATABLE :: aed_env
    TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
    AED_REAL :: surf
@@ -847,7 +847,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    rain  => rain_
    rainloss => rainloss_
    air_temp => air_temp_
-   IF ( .NOT.ASSOCIATED(air_pres_) ) THEN
+   IF ( ASSOCIATED(air_pres_) ) THEN
      air_pres => air_pres_
    ELSE
      ALLOCATE(air_pres(n_cols))
@@ -949,6 +949,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
       aed_env(col)%sed_zones    => sed_zones(top:bot)
       aed_env(col)%sed_zone     => sed_zone(col)
+      aed_env(col)%mat_id       => mat_t(col)
 
       aed_env(col)%par          => par(top:bot)
       aed_env(col)%nir          => nir(top:bot)
