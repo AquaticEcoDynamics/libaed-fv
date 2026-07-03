@@ -168,12 +168,12 @@ ${libdir}:
 	@mkdir ${libdir}
 
 clean:
-	/bin/rm -f *.i90
-	/bin/rm -f ${objdir}/*.o
-	/bin/rm -f ${moddir}/*.mod
-	/bin/rm -f ${libdir}/*.a
-	/bin/rm -f ${libdir}/*.so*
+	@/bin/rm -f *.i90
+	@/bin/rm -f ${objdir}/*.o
+	@/bin/rm -f ${moddir}/*.mod
+	@/bin/rm -f ${libdir}/*.a
+	@/bin/rm -f ${libdir}/*.so*
 
 distclean: clean
-	/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
-	/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv
+	@/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
+	@/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv

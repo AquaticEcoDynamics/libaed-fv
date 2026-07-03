@@ -335,7 +335,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
 
    ALLOCATE(min_(1:nwq_var+nben_var)) ; ALLOCATE(max_(1:nwq_var+nben_var))
 
-   sz_n = 30 !sizeof(names(1))
+   sz_n  = 30 !sizeof(names(1))
    sz_bn = 30 !sizeof(bennames(1))
    sz_dn = 30 !sizeof(diagnames(1))
 
@@ -417,7 +417,7 @@ SUBROUTINE init_var_aed_models(nCells_, cc_, cc_diag_, nwq, nwqben, sm, bm)
    INTEGER,POINTER,DIMENSION(:),INTENT(in)    :: sm, bm
 !
 !LOCALS
-   INTEGER :: rc, av, v, sv, d, sd
+   INTEGER :: rc, av, v, sv
    TYPE(aed_variable_t),POINTER :: tv
 !
 !-------------------------------------------------------------------------------
@@ -545,6 +545,7 @@ CONTAINS
       INTEGER,DIMENSION(:),ALLOCATABLE :: dvar, dmap
       LOGICAL,DIMENSION(:),ALLOCATABLE :: vsheet, dsheet
       LOGICAL :: meh
+      INTEGER :: v, sv, d, sd
    !
    !BEGIN
    !----------------------------------------------------------------------------
@@ -572,7 +573,11 @@ CONTAINS
             IF ( .NOT. aed_get_var(av, tv) ) STOP "ERROR getting variable info"
             IF ( .NOT. ( tv%extern ) ) THEN  !#  dont do environment vars
                IF (tv%diag) THEN
-                  d = d + 1
+                  IF ( tv%sheet ) THEN
+                     sd = sd + 1
+                  ELSE
+                     d = d + 1
+                  ENDIF
                ELSE
                   IF ( tv%sheet ) THEN
                      sv = sv + 1
@@ -587,13 +592,17 @@ CONTAINS
                         dmap(numd) = ccol
                       ! IF ( same_str_icase(tv%name, "LND_phreatic") ) THEN
                       ! phreat_id = av ; phreat_col = ccol ; phreat_var = d ; ENDIF
-                        dvar(numd) = d
+                        IF ( tv%sheet ) THEN
+                           dvar(numd) = sd
+                        ELSE
+                           dvar(numd) = d
+                        ENDIF
                         dsheet(numd) = tv%sheet
                      ELSE
                         numv = numv + 1
                         vmap(numv) = ccol
                         IF ( tv%sheet ) THEN
-                           vars(numv) = n_vars + sv
+                           vars(numv) = sv
                         ELSE
                            vars(numv) = v
                         ENDIF
@@ -609,7 +618,7 @@ CONTAINS
             DO v=1,numv
                IF ( vmap(v) == 0 ) CYCLE
                If ( vsheet(v) ) THEN
-                  cc(vars(v), bm(t)) = extract_double(values(vmap(v)))
+                  cc_hz(vars(v)) = extract_double(values(vmap(v)))
                ELSE
                   cc(vars(v), sm(t):bm(t)) = extract_double(values(vmap(v)))
                ENDIF
@@ -619,7 +628,7 @@ CONTAINS
                ! IF (dmap(v) == phreat_col ) &
                ! print*, " XXX setting phreat_col ", phreat_var
                If ( vsheet(v) ) THEN
-                  cc_diag(dvar(v), bm(t)) = extract_double(values(dmap(v)))
+                  cc_diag_hz(dvar(v)) = extract_double(values(dmap(v)))
                ELSE
                   cc_diag(dvar(v), sm(t):bm(t)) = extract_double(values(dmap(v)))
                ENDIF
@@ -976,9 +985,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
    DEALLOCATE(aed_data)
 
    IF (n_zones .GT. 0) &
-      CALL api_set_fv_zones(n_layers, n_cols, n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet, n_aed_vars)
-
-!  CALL init_zones(ubound(mat_id_, 2), mat_id_, do_zone_averaging, n_vars, n_vars_ben, n_vars_diag)
+      CALL api_set_fv_zones(n_layers, n_cols, n_vars, n_vars_ben, &
+                                    n_vars_diag, n_vars_diag_sheet, n_aed_vars)
 
 !print*,"allocating all_parts with ", ubound(temp,1), " cells"
 !  ALLOCATE(all_particles(n_cols))
@@ -1033,7 +1041,7 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
 !LOCALS
    TYPE(aed_variable_t),POINTER :: tv
 
-   INTEGER :: i, j, col, lev, v, d
+   INTEGER :: i, j, col, lev, v, d, ix
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
 !aed_real :: surf
@@ -1044,9 +1052,8 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
    !#  see how much time is used by libaed calculations by not doing them
    IF (depress_clutch) return
 
-!$OMP BARRIER
-!$OMP SINGLE
-   print *,"    START do_aed_models"
+!!$OMP BARRIER
+!!$OMP SINGLE
 
    !#--------------------------------------------------------------------
    !# START-UP JOBS
@@ -1054,70 +1061,19 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
 
    yearday = day_of_year(time) ! calc from time
 
-   IF ( request_nearest ) CALL fill_nearest(n_cols)
+   print *,"    START do_aed_models : "
 
-!  IF ( .NOT. reinited )  CALL re_initialize()
+   IF ( request_nearest ) CALL fill_nearest(n_cols)
 
    ThisStep = ThisStep + 1
 
-   ! if bio-active particles are running, update particle data
-#if 0
-   IF (do_particle_bgc) THEN
-      DO i=1, ubound(all_particles)
-         IF (ALLOCATED(all_particles(i)%prt)) DEALLOCATE(all_particles(i)%prt)
-         all_particles(i)%count = 0
-      ENDDO
-      DO grp=1,num_groups
-         stat = particle_groups(grp)%id_stat  ! should be 1
-         idx3d = particle_groups(grp)%id_i3   ! should be 3
-         DO prt=1,particle_groups(grp)%NP
-            IF ( particle_groups(grp)%istat(stat, prt) >= 0 ) THEN
-               i = particle_groups(grp)%istat(idx3d, prt)
-               IF ( i >= 1 .AND. i <= ubound(all_particles) ) THEN
-                  all_particles(i)%count = all_particles(i)%count + 1
-!              ELSE
-!                 print*,"idx out of range", i, ubound(all_particles)
-!                 stop
-               ENDIF
-            ENDIF
-         ENDDO
-!     ENDDO
-!     DO grp=1,num_groups
-         DO prt=1,particle_groups(grp)%NP
-            IF ( particle_groups(grp)%istat(stat, prt) < 0 ) CYCLE  !# ignore these
-
-            i = particle_groups(grp)%istat(idx3d, prt)
-            IF ( i >= 1 .AND. i <= ubound(all_particles) ) THEN
-               IF (.NOT. ALLOCATED(all_particles(i)%prt)) THEN
-                  ALLOCATE(all_particles(i)%prt(all_particles(i)%count))
-                  all_particles(i)%n = 0
-               ENDIF
-               j = all_particles(i)%n + 1
-               IF (j <= all_particles(i)%count ) THEN
-                  all_particles(i)%prt(j)%grp = grp
-                  all_particles(i)%prt(j)%idx = prt
-                  all_particles(i)%n = j
-!              ELSE
-!                 print*,"Ooops, error in PTM", j, all_particles(i)%count
-               ENDIF
-!           ELSE
-!              print*,"idx out of range", i, ubound(all_particles)
-!              print*,"grp", grp, " prt ",prt
-!              print*,"istat 1", particle_groups(grp)%istat(1,prt)
-!              print*,"istat 2", particle_groups(grp)%istat(2,prt)
-!              print*,"istat 3", particle_groups(grp)%istat(3,prt)
-!              print*,"istat 4", particle_groups(grp)%istat(4,prt)
-!              stop
-            ENDIF
-         ENDDO
-      ENDDO
-   ENDIF
-#endif
-
-!$OMP END SINGLE
-
    CALL aed_run_model(n_cols, -1, do_2d_atm_flux)
 
+!!$OMP END SINGLE
+
+   IF ( ThisStep >= n_equil_substep ) ThisStep = 0
+
+   print *,"    FINISH do_aed_models"
 END SUBROUTINE do_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1467,28 +1423,31 @@ SUBROUTINE api_calc_zone_areas(theZones, n_zones, areas, heights, wlev)
    ENDDO
 
    ! finalise the average zone environment values (divide sum by count)
-   aedZones(zon)%z_env%z_bathy     =     aedZones(zon)%z_env%z_bathy / zone_count(zon)
-   aedZones(zon)%z_env%z_col_depth = aedZones(zon)%z_env%z_col_depth / zone_count(zon)
-  !aedZones(zon)%z_env%z_height    =    aedZones(zon)%z_env%z_height / zone_count(zon) ! MH this seems to be missing so just cumulating
-   aedZones(zon)%z_env%z_I_0       =       aedZones(zon)%z_env%z_I_0 / zone_count(zon)
-   aedZones(zon)%z_env%z_wind      =      aedZones(zon)%z_env%z_wind / zone_count(zon)
-   aedZones(zon)%z_env%z_rain      =      aedZones(zon)%z_env%z_rain / zone_count(zon)
-   aedZones(zon)%z_env%z_rainloss  =  aedZones(zon)%z_env%z_rainloss / zone_count(zon)
-   aedZones(zon)%z_env%z_air_temp  =  aedZones(zon)%z_env%z_air_temp / zone_count(zon)
-   aedZones(zon)%z_env%z_air_pres  =  aedZones(zon)%z_env%z_air_pres / zone_count(zon)
-   aedZones(zon)%z_env%z_humidity  =  aedZones(zon)%z_env%z_humidity / zone_count(zon)
-   aedZones(zon)%z_env%z_longwave  =  aedZones(zon)%z_env%z_longwave / zone_count(zon)
-   aedZones(zon)%z_env%z_temp      =      aedZones(zon)%z_env%z_temp / zone_count(zon)
-   aedZones(zon)%z_env%z_salt      =      aedZones(zon)%z_env%z_salt / zone_count(zon)
-   aedZones(zon)%z_env%z_rho       =       aedZones(zon)%z_env%z_rho / zone_count(zon)
-   aedZones(zon)%z_env%z_extc      =      aedZones(zon)%z_env%z_extc / zone_count(zon)
-  !aedZones(zon)%z_env%z_taub      =      aedZones(zon)%z_env%z_taub / zone_count(zon) ! MH also seems to be missing but NOT cumulating
-   aedZones(zon)%z_env%z_tss       =       aedZones(zon)%z_env%z_tss / zone_count(zon)
-   aedZones(zon)%z_env%z_nir       =       aedZones(zon)%z_env%z_nir / zone_count(zon)
-   aedZones(zon)%z_env%z_par       =       aedZones(zon)%z_env%z_par / zone_count(zon)
-   aedZones(zon)%z_env%z_uva       =       aedZones(zon)%z_env%z_uva / zone_count(zon)
-   aedZones(zon)%z_env%z_uvb       =       aedZones(zon)%z_env%z_uvb / zone_count(zon)
-
+   DO zon=1,n_zones
+      IF ( zone_count(zon) > 0 ) THEN
+         aedZones(zon)%z_env%z_bathy     =     aedZones(zon)%z_env%z_bathy / zone_count(zon)
+         aedZones(zon)%z_env%z_col_depth = aedZones(zon)%z_env%z_col_depth / zone_count(zon)
+  !      aedZones(zon)%z_env%z_height    =    aedZones(zon)%z_env%z_height / zone_count(zon) ! MH this seems to be missing so just cumulating
+         aedZones(zon)%z_env%z_I_0       =       aedZones(zon)%z_env%z_I_0 / zone_count(zon)
+         aedZones(zon)%z_env%z_wind      =      aedZones(zon)%z_env%z_wind / zone_count(zon)
+         aedZones(zon)%z_env%z_rain      =      aedZones(zon)%z_env%z_rain / zone_count(zon)
+         aedZones(zon)%z_env%z_rainloss  =  aedZones(zon)%z_env%z_rainloss / zone_count(zon)
+         aedZones(zon)%z_env%z_air_temp  =  aedZones(zon)%z_env%z_air_temp / zone_count(zon)
+         aedZones(zon)%z_env%z_air_pres  =  aedZones(zon)%z_env%z_air_pres / zone_count(zon)
+         aedZones(zon)%z_env%z_humidity  =  aedZones(zon)%z_env%z_humidity / zone_count(zon)
+         aedZones(zon)%z_env%z_longwave  =  aedZones(zon)%z_env%z_longwave / zone_count(zon)
+         aedZones(zon)%z_env%z_temp      =      aedZones(zon)%z_env%z_temp / zone_count(zon)
+         aedZones(zon)%z_env%z_salt      =      aedZones(zon)%z_env%z_salt / zone_count(zon)
+         aedZones(zon)%z_env%z_rho       =       aedZones(zon)%z_env%z_rho / zone_count(zon)
+         aedZones(zon)%z_env%z_extc      =      aedZones(zon)%z_env%z_extc / zone_count(zon)
+  !      aedZones(zon)%z_env%z_taub      =      aedZones(zon)%z_env%z_taub / zone_count(zon) ! MH also seems to be missing but NOT cumulating
+         aedZones(zon)%z_env%z_tss       =       aedZones(zon)%z_env%z_tss / zone_count(zon)
+         aedZones(zon)%z_env%z_nir       =       aedZones(zon)%z_env%z_nir / zone_count(zon)
+         aedZones(zon)%z_env%z_par       =       aedZones(zon)%z_env%z_par / zone_count(zon)
+         aedZones(zon)%z_env%z_uva       =       aedZones(zon)%z_env%z_uva / zone_count(zon)
+         aedZones(zon)%z_env%z_uvb       =       aedZones(zon)%z_env%z_uvb / zone_count(zon)
+      ENDIF
+   ENDDO
 
    ! clean empty zones   !MH THERE WILL BE A DIVEDE BY ZERO BEFORE THIS, ABOVE.
    DO zon=1,n_zones
@@ -1520,7 +1479,6 @@ SUBROUTINE api_calc_zone_areas(theZones, n_zones, areas, heights, wlev)
          aedZones(zon)%z_env%z_longwave = zero_
         !aedZones(zon)%z_env%z_taub     = zero_
       ENDIF
-
    ENDDO
 END SUBROUTINE api_calc_zone_areas
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1607,82 +1565,6 @@ SUBROUTINE api_copy_from_zone(theZones, n_zones, heights, x_cc, x_cc_hz, x_diag,
    ENDDO
 END SUBROUTINE api_copy_from_zone
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-#if 0
-!###############################################################################
-SUBROUTINE STOPIT(message)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   CHARACTER(*) :: message
-!-------------------------------------------------------------------------------
-   PRINT *,message
-   STOP "Fatal Error"
-END SUBROUTINE STOPIT
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE aed_initialize_zone_benthic(nCols, active, n_aed_vars, cc_diag, benth_map)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   INTEGER,INTENT(in)   :: nCols
-   LOGICAL,DIMENSION(:),INTENT(in) :: active
-   INTEGER,INTENT(in)   :: n_aed_vars
-   AED_REAL,INTENT(out) :: cc_diag(:,:)
-   INTEGER,DIMENSION(:),INTENT(in) :: benth_map
-!
-!LOCALS
-   INTEGER :: col, zon, bot
-   TYPE (aed_column_t) :: column(n_aed_vars)
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   DO zon=1, n_zones
-      z_cc_diag(zon,1,:) = zero_
-
-!CAB      CALL define_column_zone(column, zon, n_aed_vars)
-
-      CALL aed_initialize_benthic(column, 1)
-   ENDDO
-
-   CALL copy_from_zone(n_cols, n_aed_vars, cc_diag, active, benth_map)
-   !# now copy the diagnostic vars back
-!  DO col=1, n_cols
-!     IF (.NOT. active(col)) CYCLE
-
-!     bot = benth_map(col)
-!     zon = zm(col)
-
-!     cc_diag(:,bot) = z_cc_diag(:,zon)
-!  ENDDO
-END SUBROUTINE aed_initialize_zone_benthic
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE compute_zone_benthic_fluxes(n_aed_vars)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   INTEGER,INTENT(in) :: n_aed_vars
-!
-!LOCALS
-   INTEGER :: zon, v
-   TYPE (aed_column_t) :: column(n_aed_vars)
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   flux_pelz = zero_ ; flux_benz = zero_
-!!$OMP DO PRIVATE(zon,column)
-   DO zon=1, n_zones
-!CAB      CALL define_column_zone(column, zon, n_aed_vars)
-
-      CALL aed_calculate_benthic(column, 1, .TRUE.)
-   ENDDO
-!!$OMP END DO
-END SUBROUTINE compute_zone_benthic_fluxes
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-#endif
 
 
 !===============================================================================

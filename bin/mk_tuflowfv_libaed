@@ -10,7 +10,9 @@ fi
 cat << EOF
 #!/bin/bash
 
-export LD_LIBRARY_PATH=${MYPATH}:/usr/local/lib/tuflowfv-${TFV_VRS}:\$LD_LIBRARY_PATH
+export AED_DIR=\$(dirname \$(realpath "\$0"))
+EXTRA_PATH=\$(dirname \$AED_DIR)/\$EXTRA_PATH/tuflowfv-${TFV_VRS}
+export LD_LIBRARY_PATH=\$AED_DIR/libaed-tfv:\$EXTRA_PATH
 ulimit -s unlimited > /dev/null
 /usr/local/bin/tuflowfv-${TFV_VRS}/tuflowfv-${TFV_VRS} "\$@"
 EOF
