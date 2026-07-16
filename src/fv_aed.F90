@@ -21,7 +21,7 @@
 !#                                                                             #
 !#   -----------------------------------------------------------------------   #
 !#                                                                             #
-!# Originally created Sept 2024                                                #
+!# Originally started Sept 2024                                                #
 !# Follow updates @ https://github.com/AquaticEcoDynamics/libaed-fv            #
 !#                                                                             #
 !###############################################################################
@@ -37,7 +37,6 @@
 !###############################################################################
 MODULE fv_aed
 !-------------------------------------------------------------------------------
- ! USE aed_util
    USE aed_common
    USE aed_api
    USE aed_zones
@@ -63,8 +62,7 @@ MODULE fv_aed
    AED_REAL,TARGET :: friction    = 0.
 
    !# Main arrays storing/pointing to the state and diagnostic variables
-   AED_REAL,DIMENSION(:,:),POINTER :: cc,    cc_diag
-   AED_REAL,DIMENSION(:),  POINTER :: cc_hz, cc_diag_hz
+   AED_REAL,DIMENSION(:,:),POINTER :: cc, cc_diag
 
    !# Arrays for environmental variables not supplied externally.
    AED_REAL,DIMENSION(:,:,:),ALLOCATABLE,TARGET :: z_cc
@@ -97,7 +95,6 @@ MODULE fv_aed
    AED_REAL,DIMENSION(:),ALLOCATABLE,TARGET :: uvb
 
    AED_REAL,DIMENSION(:),POINTER :: lpar
-   AED_REAL,TARGET :: col_taub  ! a temp var for bottom stress (computed from ustar_bed)
 
    !# To support light
    AED_REAL,TARGET :: yearday
@@ -135,17 +132,14 @@ MODULE fv_aed
    AED_REAL,DIMENSION(:),  POINTER :: area
    AED_REAL,DIMENSION(:),  POINTER :: bathy
    AED_REAL,DIMENSION(:),  POINTER :: rainloss
-!  AED_REAL,DIMENSION(:),  POINTER :: solarshade
+   AED_REAL,DIMENSION(:),  POINTER :: solarshade
    AED_REAL,DIMENSION(:),  POINTER :: ustar_bed
    AED_REAL,DIMENSION(:),  POINTER :: wv_uorb
    AED_REAL,DIMENSION(:),  POINTER :: wv_t
-!  AED_REAL,DIMENSION(:),  POINTER :: vvel   !# vertical velocity
-!  AED_REAL,DIMENSION(:),  POINTER :: cvel   !# cell velocity
 
    AED_REAL,DIMENSION(:),  POINTER :: layer_stress => null()
    AED_REAL,DIMENSION(:),  POINTER :: sed_zones => null()
    AED_REAL,DIMENSION(:),  POINTER :: sed_zone => null()
-!  AED_REAL,DIMENSION(:),  POINTER :: pres => null()
 
    AED_REAL,DIMENSION(:),ALLOCATABLE,TARGET :: feedback
 
@@ -211,7 +205,7 @@ MODULE fv_aed
    INTEGER :: n_aed_vars, n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet
 
    INTEGER, DIMENSION(:), ALLOCATABLE :: zm
-   INTEGER :: n_cols, n_zones, nCells
+   INTEGER :: n_cols, n_zones
 
 CONTAINS
 !===============================================================================
@@ -242,7 +236,6 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    TYPE(aed_coupling_t) :: cpl
 
    AED_REAL :: latlat = 0.
-   INTEGER  :: split_factor = 1
    LOGICAL  :: mobility_off = .FALSE.
    LOGICAL  :: bioshade_feedback = .FALSE.
    LOGICAL  :: repair_state = .TRUE.
@@ -304,7 +297,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    cpl%link_bottom_drag = link_bottom_drag
 
    cpl%repair_state = repair_state
-   cpl%split_factor = split_factor
+   cpl%split_factor = 1
    cpl%benthic_mode = benthic_mode
 
    cpl%rain_factor => rain_factor
@@ -378,7 +371,22 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    j = 0
    DO i=1,n_aed_vars
       IF ( aed_get_var(i, tvar) ) THEN
-         IF ( tvar%diag ) THEN
+         IF ( tvar%diag .AND. .NOT. tvar%sheet ) THEN
+            j = j + 1
+            IF ( j > ndiag_var ) THEN
+                print*, " ERROR - finding more diagnostic variables than reported"
+                EXIT
+            ENDIF
+            diagnames(j) = TRIM(tvar%name(1:sz_dn))
+            line = '' ; IF(tvar%zavg) line = '  (zavg)'
+            print *,"     D(",j,") AED diagnostic variable:  ", TRIM(diagnames(j))//TRIM(line)
+         ENDIF
+      ENDIF
+   ENDDO
+   !# dont reset j because we want to add _hz names after diags
+   DO i=1,n_aed_vars
+      IF ( aed_get_var(i, tvar) ) THEN
+         IF ( tvar%diag .AND. tvar%sheet ) THEN
             j = j + 1
             IF ( j > ndiag_var+n_sd ) THEN
                 print*, " ERROR - finding more diagnostic variables than reported"
@@ -386,7 +394,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
             ENDIF
             diagnames(j) = TRIM(tvar%name(1:sz_dn))
             line = '' ; IF(tvar%zavg) line = '  (zavg)'
-            print *,"     D(",j,") AED diagnostic variable:  ", TRIM(diagnames(j))//TRIM(line)
+            print *,"     D(",j,") AED diag_sheet variable:  ", TRIM(diagnames(j))//TRIM(line)
          ENDIF
       ENDIF
    ENDDO
@@ -405,39 +413,37 @@ END SUBROUTINE init_aed_models
 
 
 !###############################################################################
-SUBROUTINE init_var_aed_models(nCells_, cc_, cc_diag_, nwq, nwqben, sm, bm)
+SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
 !-------------------------------------------------------------------------------
 ! Points the AED main variable arrays to those provided by the host model.
 ! At this point TuflowFV should have allocated the variable space.
 !-------------------------------------------------------------------------------
 !ARGUMENTS
-   INTEGER,INTENT(in)                         :: nCells_
+   INTEGER,INTENT(in)                         :: nCells
    AED_REAL,POINTER,DIMENSION(:,:),INTENT(in) :: cc_, cc_diag_
    INTEGER,INTENT(inout)                      :: nwq, nwqben
    INTEGER,POINTER,DIMENSION(:),INTENT(in)    :: sm, bm
 !
 !LOCALS
-   INTEGER :: rc, av, v, sv
+   INTEGER :: rc, av, v, sv, i
    TYPE(aed_variable_t),POINTER :: tv
 !
 !-------------------------------------------------------------------------------
 !BEGIN
    nwq = n_vars
    nwqben = n_vars_ben
-   nCells = nCells_
 
    print *,'    init_var_aed_models : nwq = ',nwq,' nwqben = ',nwqben
 
    cc => cc_
-   cc_hz => cc_(nwq:,1)
    cc_diag => cc_diag_
-   cc_diag_hz => cc_diag_(n_vars_diag:,1)
    surf_map => sm
    benth_map => bm
 
    ! Allocate state and diagnostic variable arrays
    IF ( .NOT. ASSOCIATED(cc) ) STOP ' ERROR : no association for (cc)'
    cc = 0.
+
    IF (.not. ASSOCIATED(cc_diag) ) STOP ' ERROR : no association for (cc_diag)'
    cc_diag = 0.
 
@@ -478,7 +484,10 @@ SUBROUTINE init_var_aed_models(nCells_, cc_, cc_diag_, nwq, nwqben, sm, bm)
       IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither global nor diagnostic variable
          IF ( tv%sheet ) THEN
             sv = sv + 1
-            cc(n_vars+sv, :) = tv%initial
+            cc(n_vars+sv, :) = zero_
+            DO i=1,ubound(bm, 1)
+               cc(n_vars+sv, bm(i)) = tv%initial
+            ENDDO
          ELSE
             v = v + 1
             cc(v,:) = tv%initial
@@ -587,6 +596,7 @@ CONTAINS
                ENDIF
                DO ccol=1,nccols
                   IF ( same_str_icase(tv%name, csvnames(ccol)) ) THEN
+                   ! print *,'        - ', TRIM(tv%name)
                      IF (tv%diag) THEN
                         numd = numd + 1
                         dmap(numd) = ccol
@@ -618,7 +628,7 @@ CONTAINS
             DO v=1,numv
                IF ( vmap(v) == 0 ) CYCLE
                If ( vsheet(v) ) THEN
-                  cc_hz(vars(v)) = extract_double(values(vmap(v)))
+                  cc(vars(v), bm(t)) = extract_double(values(vmap(v)))
                ELSE
                   cc(vars(v), sm(t):bm(t)) = extract_double(values(vmap(v)))
                ENDIF
@@ -628,7 +638,7 @@ CONTAINS
                ! IF (dmap(v) == phreat_col ) &
                ! print*, " XXX setting phreat_col ", phreat_var
                If ( vsheet(v) ) THEN
-                  cc_diag_hz(dvar(v)) = extract_double(values(dmap(v)))
+                  cc_diag(dvar(v), bm(t)) = extract_double(values(dmap(v)))
                ELSE
                   cc_diag(dvar(v), sm(t):bm(t)) = extract_double(values(dmap(v)))
                ENDIF
@@ -784,8 +794,6 @@ SUBROUTINE set_env_aed_models(dt_,              &
    TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
    AED_REAL :: surf
 
-   AED_REAL,DIMENSION(:),ALLOCATABLE :: tst
-
    PROCEDURE(aed_mobility_fn_t),POINTER :: doMobilityP
 !
 !-------------------------------------------------------------------------------
@@ -806,22 +814,42 @@ SUBROUTINE set_env_aed_models(dt_,              &
 !print*,"n_cols = ",n_cols," n_layers = ",n_layers
 
    !# 2D (sheet) variables being pointed to
+   !# area is 2D in tuflow, but we allow for layers having different
+   !# areas (eg GLM) so the api wants 3D
 !  area => area_
    ALLOCATE(area(n_cols*n_layers))
+   I_0 => I_0_
+   longwave => longwave_
+   wind => wnd_
+   !# see note on area"
 !  ustar_bed => ustar_bed_
    ALLOCATE(ustar_bed(n_cols*n_layers))
+   bathy => bathy_
+   rain  => rain_
+   !# see note on area"
+!  solarshade => solarshade_
+   ALLOCATE(solarshade(n_cols*n_layers))
+   rainloss => rainloss_
+   !# see note on area"
+!  biodrag => biodrag_
+   ALLOCATE(biodrag(n_cols*n_layers))
+   air_temp => air_temp_
+   IF ( ASSOCIATED(air_pres_) ) THEN
+     air_pres => air_pres_
+   ELSE
+     ALLOCATE(air_pres(n_cols))
+     air_pres = 1013.25
+   ENDIF
+   humidity => humidity_
    ALLOCATE(wv_uorb(n_cols*n_layers))
    IF (link_wave_stress) THEN
      ALLOCATE(wv_t(n_cols*n_layers))
 !    wv_uorb => wv_uorb_
 !    wv_t => wv_t_
    ENDIF
+
    ALLOCATE(sed_zone(n_cols))
    ALLOCATE(sed_zones(n_cols*n_layers))
-!  biodrag => biodrag_
-   ALLOCATE(biodrag(n_cols*n_layers))
-!  solarshade => solarshade_
-!  ALLOCATE(solarshade(n_cols*n_layers))
    ALLOCATE(surf_map2(n_cols)) ; ALLOCATE(benth_map2(n_cols))
    DO col=1, n_cols
       base = benth_map(col)
@@ -837,7 +865,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
             wv_t(benth_map(col):surf_map(col)) = wv_t_(col)
          ENDIF
          biodrag(benth_map(col):surf_map(col)) = biodrag_(col)
-!        solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
+         solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
       ELSE
          area(surf_map(col):benth_map(col)) = area_(col)
          ustar_bed(surf_map(col):benth_map(col)) = ustar_bed_(col)
@@ -846,23 +874,9 @@ SUBROUTINE set_env_aed_models(dt_,              &
             wv_t(surf_map(col):benth_map(col)) = wv_t_(col)
          ENDIF
          biodrag(surf_map(col):benth_map(col)) = biodrag_(col)
-!        solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
+         solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
       ENDIF
    ENDDO
-   I_0 => I_0_
-   longwave => longwave_
-   wind => wnd_
-   bathy => bathy_
-   rain  => rain_
-   rainloss => rainloss_
-   air_temp => air_temp_
-   IF ( ASSOCIATED(air_pres_) ) THEN
-     air_pres => air_pres_
-   ELSE
-     ALLOCATE(air_pres(n_cols))
-     air_pres = 1013.25
-   ENDIF
-   humidity => humidity_
 
    ALLOCATE(aed_env(n_cols))
    ALLOCATE(aed_data(n_cols))
@@ -880,9 +894,6 @@ SUBROUTINE set_env_aed_models(dt_,              &
                      !# output of biogeochemistry, input for physics
    salt => salt_
    temp => temp_
-
-!  vvel => vvel_
-!  cvel => cvel_
 
    rho => rho_
    tss => tss_
@@ -905,7 +916,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
                cType = mat_id_(1, col)
                EXIT
             ENDIF
-         ENDDO     
+         ENDDO
       ENDIF
       IF ( cType /= mat_id_(1, col) ) THEN
          nTypes = nTypes + 1
@@ -965,17 +976,15 @@ SUBROUTINE set_env_aed_models(dt_,              &
       aed_env(col)%uva          => uva(top:bot)
       aed_env(col)%uvb          => uvb(top:bot)
 
-!     aed_env(col)%pres         => pres(top:bot)
-
       aed_env(col)%biodrag      => biodrag(top:bot)
       aed_env(col)%solarshade   => solarshade_(col)
 
       aed_env(col)%windshade    => feedback(col)
 
       aed_data(col)%cc          => cc(:, top:bot)
-      aed_data(col)%cc_hz       => cc_hz(:)
+      aed_data(col)%cc_hz       => cc(:, top)
       aed_data(col)%cc_diag     => cc_diag(:, top:bot)
-      aed_data(col)%cc_diag_hz  => cc_diag_hz(:)
+      aed_data(col)%cc_diag_hz  => cc_diag(:, top)
    ENDDO
 
    CALL aed_set_model_env(aed_env, n_cols, n_layers)
@@ -984,12 +993,11 @@ SUBROUTINE set_env_aed_models(dt_,              &
    CALL aed_set_model_data(aed_data, n_cols, n_layers)
    DEALLOCATE(aed_data)
 
+   print "( 'Model has ',I4, ' columns with ', I4, ' layers per column')", n_cols, n_layers
+
    IF (n_zones .GT. 0) &
       CALL api_set_fv_zones(n_layers, n_cols, n_vars, n_vars_ben, &
                                     n_vars_diag, n_vars_diag_sheet, n_aed_vars)
-
-!print*,"allocating all_parts with ", ubound(temp,1), " cells"
-!  ALLOCATE(all_particles(n_cols))
 
    doMobilityP => doMobilityF
    CALL aed_set_mobility_fn(doMobilityP)
@@ -1102,8 +1110,7 @@ SUBROUTINE doMobilityF(N, dt, h, A, ww, min_C, mcc)
    CALL Settling(N,dt,h,ww,Fsed,mcc)
 END SUBROUTINE doMobilityF
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-   
-   
+
 
 !###############################################################################
 SUBROUTINE Settling(N, dt, h, wvel, Fsed, Y)
@@ -1347,7 +1354,7 @@ SUBROUTINE api_calc_zone_areas(theZones, n_zones, areas, heights, wlev)
       z_cc_diag(:,:,zon) = zero_
       z_cc_diag_hz(:,zon) = zero_
 
-      aedZones(zon)%z_env%z_temp = zero_       
+      aedZones(zon)%z_env%z_temp = zero_
       aedZones(zon)%z_env%z_salt = zero_
       aedZones(zon)%z_env%z_rho = zero_
       aedZones(zon)%z_env%z_rad = zero_
@@ -1376,7 +1383,7 @@ SUBROUTINE api_calc_zone_areas(theZones, n_zones, areas, heights, wlev)
       aedZones(zon)%z_env%z_longwave = zero_
    !  aedZones(zon)%z_env%z_taub = col_taub
       aedZones(zon)%z_env%z_col_depth = one_
-   ENDDO 
+   ENDDO
 
    zone_count = 0
 
