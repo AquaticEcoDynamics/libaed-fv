@@ -158,6 +158,8 @@ MODULE fv_aed
    LOGICAL  :: link_surface_drag = .FALSE.
    LOGICAL  :: link_water_density = .FALSE.
 
+   LOGICAL  :: link_host_time = .TRUE.
+
    AED_REAL :: wave_factor =  1.0
    LOGICAL  :: depress_clutch = .FALSE.
    LOGICAL  :: do_limiter = .FALSE.
@@ -190,6 +192,9 @@ MODULE fv_aed
    AED_REAL,TARGET :: longitude = 0.
    AED_REAL,TARGET :: latitude = 0.
 !  AED_REAL :: latlat = 0.
+   AED_REAL :: startday  = -99.
+   AED_REAL :: aedtime   = 0.
+
 !  %% END NAMELIST   %%  /aed_bio/
 !##--------------------------------------------------##
 
@@ -205,7 +210,8 @@ MODULE fv_aed
    INTEGER :: n_aed_vars, n_vars, n_vars_ben, n_vars_diag, n_vars_diag_sheet
 
    INTEGER, DIMENSION(:), ALLOCATABLE :: zm
-   INTEGER :: n_cols, n_zones
+   AED_REAL,DIMENSION(:), ALLOCATABLE,TARGET :: zone
+   INTEGER :: n_cols, n_zones, n_cells
 
 CONTAINS
 !===============================================================================
@@ -236,6 +242,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    TYPE(aed_coupling_t) :: cpl
 
    AED_REAL :: latlat = 0.
+   INTEGER  :: split_factor = 1
    LOGICAL  :: mobility_off = .FALSE.
    LOGICAL  :: bioshade_feedback = .FALSE.
    LOGICAL  :: repair_state = .TRUE.
@@ -254,7 +261,8 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
                       route_table_file, n_equil_substep, min_water_depth,      &
                       link_wave_stress, wave_factor, display_minmax,           &
                       display_cellid, depress_clutch,                          &
-                      nir_frac,par_frac,uva_frac,uvb_frac, longitude, latlat
+                      nir_frac,par_frac,uva_frac,uvb_frac, longitude, latlat,  &
+                      link_host_time, startday
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -282,22 +290,24 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    print *,'        link_rain_loss     :  ',link_rain_loss
    print *,'        link_particle_bgc  :  ',do_particle_bgc,' (under development)'
    print *,'        link_water_density :  ',link_water_density,' (not implemented)'
+   print *,'        link_host_time     :  ',link_host_time
 
    cpl%glm_style_zones = .FALSE.
 
-   cpl%par_fraction =  0.450
-   cpl%nir_fraction =  0.510
-   cpl%uva_fraction =  0.035
-   cpl%uvb_fraction =  0.005
+   cpl%par_fraction =  par_frac
+   cpl%nir_fraction =  nir_frac
+   cpl%uva_fraction =  uva_frac
+   cpl%uvb_fraction =  uvb_frac
 
    cpl%mobility_off = mobility_off
    cpl%bioshade_feedback = bioshade_feedback
    cpl%link_rain_loss = link_rain_loss
    cpl%link_solar_shade = link_solar_shade
    cpl%link_bottom_drag = link_bottom_drag
+   cpl%link_water_clarity = link_water_clarity
 
-   cpl%repair_state = repair_state
-   cpl%split_factor = 1
+   cpl%repair_state = do_limiter
+   cpl%split_factor = split_factor
    cpl%benthic_mode = benthic_mode
 
    cpl%rain_factor => rain_factor
@@ -432,6 +442,7 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
 !BEGIN
    nwq = n_vars
    nwqben = n_vars_ben
+   n_cells = nCells
 
    print *,'    init_var_aed_models : nwq = ',nwq,' nwqben = ',nwqben
 
@@ -477,29 +488,314 @@ SUBROUTINE init_var_aed_models(nCells, cc_, cc_diag_, nwq, nwqben, sm, bm)
    IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (Fsed_setl)'
    Fsed_setl = 0.
 
-   !# Now set initial values
-   v = 0 ; sv = 0;
-   DO av=1,n_aed_vars
-      IF ( .NOT.  aed_get_var(av, tv) ) STOP "ERROR getting variable info"
-      IF ( .NOT. ( tv%extern .OR. tv%diag) ) THEN  !# neither global nor diagnostic variable
-         IF ( tv%sheet ) THEN
-            sv = sv + 1
-            cc(n_vars+sv, :) = zero_
-            DO i=1,ubound(bm, 1)
-               cc(n_vars+sv, bm(i)) = tv%initial
-            ENDDO
-         ELSE
-            v = v + 1
-            cc(v,:) = tv%initial
-         ENDIF
+   ALLOCATE(flux(n_vars+n_vars_ben, nCells),stat=rc)
+   IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (flux)'
+   flux = 0.
+END SUBROUTINE init_var_aed_models
+!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+!###############################################################################
+SUBROUTINE set_env_aed_models(dt_,              &
+                            ! 3D env variables
+                               temp_,            &
+                               salt_,            &
+                               rho_,             &
+                               h_,               &
+                               tss_,             &
+                               rad_,             &
+                               vvel_,            &
+                               cvel_,            &
+                            ! 3D feedback arrays
+                               extcoeff_,        &
+                            ! 2D env variables
+                               area_,            &
+                               I_0_,             &
+                               longwave_,        &
+                               wnd_,             &
+                               rain_,            &
+                               humidity_,        &
+                               air_temp_,        &
+                               ustar_bed_,       &
+                               ustar_surf_,      &
+                               wv_uorb_,         &
+                               wv_t_,            &
+                               z_,               &
+                               bathy_,           &
+                               mat_id_,          &
+                               active_,          &
+                            ! 2D feedback arrays
+                               biodrag_,         &
+                               solarshade_,      &
+                               rainloss_,        &
+                            ! some extra for light
+                               time, lat_,       &
+                            ! and more
+                               air_pres_         &
+                              )
+!-------------------------------------------------------------------------------
+! Provide environmental information from TuflowFV and set feedback arrays
+!-------------------------------------------------------------------------------
+!ARGUMENTS
+   DOUBLETYPE, INTENT(in) :: dt_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: temp_, salt_, rho_, h_,    &
+                                                    area_, tss_, extcoeff_, z_
+   AED_REAL, INTENT(in), DIMENSION(:,:), POINTER :: rad_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: vvel_, cvel_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: I_0_, wnd_, ustar_bed_, ustar_surf_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: longwave_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: wv_uorb_, wv_t_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: rain_, bathy_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: air_temp_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: humidity_
+   INTEGER,  INTENT(in), DIMENSION(:,:), POINTER :: mat_id_
+   LOGICAL,  INTENT(in), DIMENSION(:),   POINTER :: active_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: biodrag_, solarshade_, rainloss_
+   AED_REAL, INTENT(in)                          :: time
+   AED_REAL, INTENT(in)                          :: lat_
+   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: air_pres_
+!
+!LOCALS
+   INTEGER :: col, top, bot, lev
+   INTEGER :: zon, n_layers, cType, nTypes
+   INTEGER :: l_idx, h_idx
+   TYPE(aed_env_t),DIMENSION(:),ALLOCATABLE :: aed_env
+   TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
+   INTEGER,DIMENSION(:),ALLOCATABLE :: mat_t
+
+   PROCEDURE(aed_mobility_fn_t),POINTER :: doMobilityP
+!
+!-------------------------------------------------------------------------------
+!BEGIN
+   print *,'    set_env_aed_models : linking to host environment vars '
+
+   !# Provide pointers to arrays with environmental variables to AED.
+   dt = dt_
+   part_day_per_step = dt / 86400.
+!  yearday = day_of_year(time) ! calc from time
+
+   n_cols = ubound(mat_id_,2)
+   ALLOCATE(colnums(n_cols))
+   ALLOCATE(mat(n_cols))
+   n_layers = 0
+   DO col=1, n_cols
+      colnums(col) = col
+      mat(col) = REAL(mat_id_(1,col))
+      lev = ABS(surf_map(col) - benth_map(col)) + 1
+      if ( lev > n_layers ) n_layers = lev
+   ENDDO
+!print*,"n_cols = ",n_cols," n_layers = ",n_layers
+
+   !# 2D (sheet) variables being pointed to
+   !# area is 2D in tuflow, but we allow for layers having different
+   !# areas (eg GLM) so the api wants 3D
+!  area => area_
+  !ALLOCATE(area(n_cols*n_layers))
+   ALLOCATE(area(n_cells))
+   I_0 => I_0_
+   longwave => longwave_
+   wind => wnd_
+   !# see note on area"
+!  ustar_bed => ustar_bed_
+  !ALLOCATE(ustar_bed(n_cols*n_layers))
+   ALLOCATE(ustar_bed(n_cells))
+   bathy => bathy_
+   rain  => rain_
+   !# see note on area"
+!  solarshade => solarshade_
+  !ALLOCATE(solarshade(n_cols*n_layers))
+   ALLOCATE(solarshade(n_cells))
+   rainloss => rainloss_
+   !# see note on area"
+!  biodrag => biodrag_
+  !ALLOCATE(biodrag(n_cols*n_layers))
+   ALLOCATE(biodrag(n_cells))
+   air_temp => air_temp_
+   IF ( ASSOCIATED(air_pres_) ) THEN
+     air_pres => air_pres_
+   ELSE
+     ALLOCATE(air_pres(n_cols))
+     air_pres = 1013.25
+   ENDIF
+   humidity => humidity_
+  !ALLOCATE(wv_uorb(n_cols*n_layers))
+   ALLOCATE(wv_uorb(n_cells))
+   IF (link_wave_stress) THEN
+    !ALLOCATE(wv_t(n_cols*n_layers))
+     ALLOCATE(wv_t(n_cells))
+!    wv_uorb => wv_uorb_
+!    wv_t => wv_t_
+   ENDIF
+
+   ALLOCATE(sed_zone(n_cols))
+  !ALLOCATE(sed_zones(n_cols*n_layers))
+   ALLOCATE(sed_zones(n_cells))
+
+   ALLOCATE(surf_map2(n_cols)) ; ALLOCATE(benth_map2(n_cols))
+   DO col=1, n_cols
+      IF ( surf_map(col) > benth_map(col) ) THEN
+         l_idx = benth_map(col) ; h_idx = surf_map(col)
+         surf_map2(col) = surf_map(col) - benth_map(col) + 1
+         benth_map2(col) = 1
+      ELSE
+         h_idx = benth_map(col) ; l_idx = surf_map(col)
+         surf_map2(col) = 1
+         benth_map2(col) = benth_map(col) - surf_map(col) + 1
       ENDIF
+
+      area(l_idx:h_idx) = area_(col)
+      ustar_bed(benth_map(col):surf_map(col)) = ustar_bed_(col)
+      IF (link_wave_stress) THEN
+         wv_uorb(l_idx:h_idx) = wv_uorb_(col)
+         wv_t(l_idx:h_idx) = wv_t_(col)
+      ENDIF
+      biodrag(l_idx:h_idx) = biodrag_(col)
+      solarshade(l_idx:h_idx) = solarshade_(col)
    ENDDO
 
+   ALLOCATE(aed_env(n_cols))
+   ALLOCATE(aed_data(n_cols))
+
+   ALLOCATE(layer_stress(n_cols))
+   ALLOCATE(feedback(n_cols))
+
+   !# 3D variables being pointed to
+   h => h_           !# layer heights [1d array] needed for advection, diffusion
+   depth => z_       !# depth [1d array], used to calculate local pressure
+   extc => extcoeff_ !# biogeochemical light attenuation coefficients [1d array],
+                     !# output of biogeochemistry, input for physics
+   salt => salt_
+   temp => temp_
+
+   rho => rho_
+   tss => tss_
+   active => active_
+
+   IF (link_ext_par) THEN ; lpar => rad_(1,:) ; ELSE ; lpar => par ; ENDIF
+
+   ALLOCATE(mat_t(n_cols)) ; ALLOCATE(zm(n_cols))
+   mat_t = 0 ; zm = 1 ; zon = 1
+   !# The new form of zones
+   cType = mat_id_(1,1) ; nTypes = 1 ; mat_t(nTypes) = mat_id_(1,1)
+
+   DO col=1, n_cols
+      IF ( cType /= mat_id_(1, col) ) THEN
+         DO zon=1,nTypes
+            IF ( mat_t(zon) .EQ. mat_id_(1, col) ) THEN
+               cType = mat_id_(1, col)
+               EXIT
+            ENDIF
+         ENDDO
+      ENDIF
+      IF ( cType /= mat_id_(1, col) ) THEN
+         nTypes = nTypes + 1
+         mat_t(nTypes) = mat_id_(1, col)
+         cType = mat_id_(1, col)
+         zon = nTypes
+         zm(col) = zon
+      ENDIF
+   ENDDO
+   n_zones = nTypes
+
+   ALLOCATE(zone(n_zones))
+ ! ALLOCATE(zone_colnums(n_zones))
+   DO zon=1, n_zones
+      zone(zon) = mat_t(zon)
+ !    zone_colnums(zon) = zon
+   ENDDO
+ ! ALLOCATE(zone_coldepth(n_zones))
+   DEALLOCATE(mat_t)
+
+   DO col=1, n_cols
+      top = surf_map(col)
+      bot = benth_map(col)
+
+      colnums(col) = col
+      mat(col) = REAL(mat_id_(1, col))
+
+      aed_env(col)%yearday      => yearday
+      aed_env(col)%timestep     => dt !timestep
+
+      aed_env(col)%longitude    => longitude
+      aed_env(col)%latitude     => latitude
+
+      aed_env(col)%top_idx      => surf_map2(col)
+      aed_env(col)%bot_idx      => benth_map2(col)
+      aed_env(col)%active       => active(col)
+
+      aed_env(col)%temp         => temp(top:bot)
+      aed_env(col)%salt         => salt(top:bot)
+      aed_env(col)%rho          => rho(top:bot)
+      aed_env(col)%col_depth    => z_(col)
+      aed_env(col)%dz           => h(top:bot)
+      aed_env(col)%height       => h(top:bot)
+      aed_env(col)%area         => area(top:bot)
+    ! aed_env(col)%depth        => depth(top:bot)
+      aed_env(col)%extc         => extc(top:bot)
+      aed_env(col)%tss          => tss(top:bot)
+    ! aed_env(col)%ss1          => ss1(top:bot)
+      aed_env(col)%ss1          => tss(top:bot)
+    ! aed_env(col)%ss2          => ss2(top:bot)
+      aed_env(col)%ss2          => tss(top:bot)
+    ! aed_env(col)%ss3          => ss3(top:bot)
+      aed_env(col)%ss3          => tss(top:bot)
+    ! aed_env(col)%ss4          => ss4(top:bot)
+      aed_env(col)%ss4          => tss(top:bot)
+      aed_env(col)%cvel         => cvel_(top:bot)
+    ! aed_env(col)%rad          => rad_(:,col)
+
+      aed_env(col)%I_0          => I_0(col)
+      aed_env(col)%wind         => wind(col)
+      aed_env(col)%air_temp     => air_temp(col)
+      aed_env(col)%air_pres     => air_pres(col)
+      aed_env(col)%rain         => rain(col)
+    ! aed_env(col)%humidity     => humidity(col)
+      aed_env(col)%longwave     => longwave(col)
+      aed_env(col)%bathy        => bathy(col)
+      aed_env(col)%rainloss     => rainloss(col)
+      aed_env(col)%layer_stress => layer_stress(col)
+
+      aed_env(col)%ustar_bed    => ustar_bed(top:bot)
+      aed_env(col)%wv_uorb      => wv_uorb(top:bot)
+      aed_env(col)%wv_t         => wv_t(top:bot)
+
+    ! aed_env(col)%sed_zones    => sed_zones(top:bot)
+      aed_env(col)%sed_zone     => zone(zm(col))
+      aed_env(col)%mat_id       => mat(col)
+
+      aed_env(col)%par          => lpar(top:bot)
+      aed_env(col)%nir          => nir(top:bot)
+      aed_env(col)%uva          => uva(top:bot)
+      aed_env(col)%uvb          => uvb(top:bot)
+
+      aed_env(col)%biodrag      => biodrag(top:bot)
+      aed_env(col)%solarshade   => solarshade_(col)
+
+    ! aed_env(col)%windshade    => feedback(col)
+
+      aed_data(col)%cc          => cc(1:n_vars, top:bot)
+      aed_data(col)%cc_hz       => cc(n_vars+1:n_vars+n_vars_ben, bot)
+      aed_data(col)%cc_diag     => cc_diag(1:n_vars_diag, top:bot)
+      aed_data(col)%cc_diag_hz  => cc_diag(n_vars_diag+1:n_vars_diag+n_vars_diag_sheet, bot)
+   ENDDO
+
+   CALL aed_set_model_env(aed_env, n_cols, n_layers)
+   DEALLOCATE(aed_env)
+
+   CALL aed_set_model_data(aed_data, n_cols, n_layers)
+   DEALLOCATE(aed_data)
+
+   print "( 'Model has ',I4, ' columns with ', I4, ' layers per column')", n_cols, n_layers
+
+   IF (n_zones .GT. 0) &
+      CALL api_set_fv_zones(n_layers, n_cols, n_vars, n_vars_ben, &
+                                    n_vars_diag, n_vars_diag_sheet, n_aed_vars)
+
+   doMobilityP => doMobilityF
+   CALL aed_set_mobility_fn(doMobilityP)
+
    IF ( init_values_file /= '' ) CALL set_initial_from_file
-   IF ( route_table_file /= '' ) CALL load_route_table(ubound(bm, 1))
-
-   ALLOCATE(flux(n_vars+n_vars_ben, nCells),stat=rc) ; IF (rc /= 0) STOP 'allocate_memory(): ERROR allocating (flux)'
-
+   IF ( route_table_file /= '' ) CALL load_route_table(ubound(benth_map, 1))
 !
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -554,7 +850,8 @@ CONTAINS
       INTEGER,DIMENSION(:),ALLOCATABLE :: dvar, dmap
       LOGICAL,DIMENSION(:),ALLOCATABLE :: vsheet, dsheet
       LOGICAL :: meh
-      INTEGER :: v, sv, d, sd
+      INTEGER :: av, v, sv, d, sd
+      TYPE(aed_variable_t),POINTER :: tv
    !
    !BEGIN
    !----------------------------------------------------------------------------
@@ -628,9 +925,11 @@ CONTAINS
             DO v=1,numv
                IF ( vmap(v) == 0 ) CYCLE
                If ( vsheet(v) ) THEN
-                  cc(vars(v), bm(t)) = extract_double(values(vmap(v)))
+                  cc(vars(v), benth_map(t)) = extract_double(values(vmap(v)))
+                  ! In case it was set to be the top
+                  cc(vars(v), surf_map(t)) = cc(vars(v), benth_map(t))
                ELSE
-                  cc(vars(v), sm(t):bm(t)) = extract_double(values(vmap(v)))
+                  cc(vars(v), surf_map(t):benth_map(t)) = extract_double(values(vmap(v)))
                ENDIF
             ENDDO
             DO v=1,numd
@@ -638,9 +937,11 @@ CONTAINS
                ! IF (dmap(v) == phreat_col ) &
                ! print*, " XXX setting phreat_col ", phreat_var
                If ( vsheet(v) ) THEN
-                  cc_diag(dvar(v), bm(t)) = extract_double(values(dmap(v)))
+                  cc_diag(dvar(v), benth_map(t)) = extract_double(values(dmap(v)))
+                  ! In case it was set to be the top
+                  cc_diag(dvar(v), surf_map(t)) = cc_diag(dvar(v), benth_map(t))
                ELSE
-                  cc_diag(dvar(v), sm(t):bm(t)) = extract_double(values(dmap(v)))
+                  cc_diag(dvar(v), surf_map(t):benth_map(t)) = extract_double(values(dmap(v)))
                ENDIF
             ENDDO
          ENDDO
@@ -722,320 +1023,7 @@ CONTAINS
    END SUBROUTINE load_route_table
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-END SUBROUTINE init_var_aed_models
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE set_env_aed_models(dt_,              &
-                            ! 3D env variables
-                               temp_,            &
-                               salt_,            &
-                               rho_,             &
-                               h_,               &
-                               tss_,             &
-                               rad_,             &
-                               vvel_,            &
-                               cvel_,            &
-                            ! 3D feedback arrays
-                               extcoeff_,        &
-                            ! 2D env variables
-                               area_,            &
-                               I_0_,             &
-                               longwave_,        &
-                               wnd_,             &
-                               rain_,            &
-                               humidity_,        &
-                               air_temp_,        &
-                               ustar_bed_,       &
-                               ustar_surf_,      &
-                               wv_uorb_,         &
-                               wv_t_,            &
-                               z_,               &
-                               bathy_,           &
-                               mat_id_,          &
-                               active_,          &
-                            ! 2D feedback arrays
-                               biodrag_,         &
-                               solarshade_,      &
-                               rainloss_,        &
-                            ! some extra for light
-                               time, lat_,       &
-                            ! and more
-                               air_pres_         &
-                              )
-!-------------------------------------------------------------------------------
-! Provide environmental information from TuflowFV and set feedback arrays
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   DOUBLETYPE, INTENT(in) :: dt_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: temp_, salt_, rho_, h_,    &
-                                                    area_, tss_, extcoeff_, z_
-   AED_REAL, INTENT(in), DIMENSION(:,:), POINTER :: rad_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: vvel_, cvel_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: I_0_, wnd_, ustar_bed_, ustar_surf_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: longwave_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: wv_uorb_, wv_t_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: rain_, bathy_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: air_temp_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: humidity_
-   INTEGER,  INTENT(in), DIMENSION(:,:), POINTER :: mat_id_
-   LOGICAL,  INTENT(in), DIMENSION(:),   POINTER :: active_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: biodrag_, solarshade_, rainloss_
-   AED_REAL, INTENT(in)                          :: time
-   AED_REAL, INTENT(in)                          :: lat_
-   AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: air_pres_
-!
-!LOCALS
-   INTEGER :: col, top, bot, lev, base
-   INTEGER :: nTypes, cType, zon, n_layers
-   AED_REAL, DIMENSION(:),ALLOCATABLE,TARGET :: mat_t
-   TYPE(aed_env_t),DIMENSION(:),ALLOCATABLE :: aed_env
-   TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
-   AED_REAL :: surf
-
-   PROCEDURE(aed_mobility_fn_t),POINTER :: doMobilityP
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   print *,'    set_env_aed_models : linking to host environment vars '
-
-   !# Provide pointers to arrays with environmental variables to AED.
-   dt = dt_
-   part_day_per_step = dt / 86400.
-!  yearday = day_of_year(time) ! calc from time
-
-   n_cols = ubound(mat_id_,2)
-   n_layers = 0
-   DO col=1, n_cols
-      lev = ABS(surf_map(col) - benth_map(col)) + 1
-      if ( lev > n_layers ) n_layers = lev
-   ENDDO
-!print*,"n_cols = ",n_cols," n_layers = ",n_layers
-
-   !# 2D (sheet) variables being pointed to
-   !# area is 2D in tuflow, but we allow for layers having different
-   !# areas (eg GLM) so the api wants 3D
-!  area => area_
-   ALLOCATE(area(n_cols*n_layers))
-   I_0 => I_0_
-   longwave => longwave_
-   wind => wnd_
-   !# see note on area"
-!  ustar_bed => ustar_bed_
-   ALLOCATE(ustar_bed(n_cols*n_layers))
-   bathy => bathy_
-   rain  => rain_
-   !# see note on area"
-!  solarshade => solarshade_
-   ALLOCATE(solarshade(n_cols*n_layers))
-   rainloss => rainloss_
-   !# see note on area"
-!  biodrag => biodrag_
-   ALLOCATE(biodrag(n_cols*n_layers))
-   air_temp => air_temp_
-   IF ( ASSOCIATED(air_pres_) ) THEN
-     air_pres => air_pres_
-   ELSE
-     ALLOCATE(air_pres(n_cols))
-     air_pres = 1013.25
-   ENDIF
-   humidity => humidity_
-   ALLOCATE(wv_uorb(n_cols*n_layers))
-   IF (link_wave_stress) THEN
-     ALLOCATE(wv_t(n_cols*n_layers))
-!    wv_uorb => wv_uorb_
-!    wv_t => wv_t_
-   ENDIF
-
-   ALLOCATE(sed_zone(n_cols))
-   ALLOCATE(sed_zones(n_cols*n_layers))
-   ALLOCATE(surf_map2(n_cols)) ; ALLOCATE(benth_map2(n_cols))
-   DO col=1, n_cols
-      base = benth_map(col)
-      IF (surf_map(col) < benth_map(col)) base = surf_map(col)
-      surf_map2(col) = surf_map(col) - base + 1
-      benth_map2(col) = benth_map(col) - base + 1
-
-      IF ( surf_map(col) > benth_map(col) ) THEN
-         area(benth_map(col):surf_map(col)) = area_(col)
-         ustar_bed(benth_map(col):surf_map(col)) = ustar_bed_(col)
-         IF (link_wave_stress) THEN
-            wv_uorb(benth_map(col):surf_map(col)) = wv_uorb_(col)
-            wv_t(benth_map(col):surf_map(col)) = wv_t_(col)
-         ENDIF
-         biodrag(benth_map(col):surf_map(col)) = biodrag_(col)
-         solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
-      ELSE
-         area(surf_map(col):benth_map(col)) = area_(col)
-         ustar_bed(surf_map(col):benth_map(col)) = ustar_bed_(col)
-         IF (link_wave_stress) THEN
-            wv_uorb(surf_map(col):benth_map(col)) = wv_uorb_(col)
-            wv_t(surf_map(col):benth_map(col)) = wv_t_(col)
-         ENDIF
-         biodrag(surf_map(col):benth_map(col)) = biodrag_(col)
-         solarshade(benth_map(col):surf_map(col)) = solarshade_(col)
-      ENDIF
-   ENDDO
-
-   ALLOCATE(aed_env(n_cols))
-   ALLOCATE(aed_data(n_cols))
-   ALLOCATE(colnums(n_cols))
-   ALLOCATE(mat(n_cols))
-   ALLOCATE(mat_t(n_cols))
-   ALLOCATE(zm(n_cols))
-   ALLOCATE(layer_stress(n_cols))
-   ALLOCATE(feedback(n_cols))
-
-   !# 3D variables being pointed to
-   h => h_           !# layer heights [1d array] needed for advection, diffusion
-   depth => z_       !# depth [1d array], used to calculate local pressure
-   extc => extcoeff_ !# biogeochemical light attenuation coefficients [1d array],
-                     !# output of biogeochemistry, input for physics
-   salt => salt_
-   temp => temp_
-
-   rho => rho_
-   tss => tss_
-   active => active_
-
-   IF (link_ext_par) lpar => rad_(1,:)
-
-   cType = mat_id_(1,1) ; nTypes = 1 ; mat_t(nTypes) = mat_id_(1,1)
-
-   DO col=1, n_cols
-      top = surf_map(col)
-      bot = benth_map(col)
-
-      colnums(col) = col
-      mat(col) = REAL(mat_id_(1, col))
-
-      IF ( cType /= mat_id_(1, col) ) THEN
-         DO zon=1,nTypes
-            IF ( mat_t(zon) .EQ. mat_id_(1, col) ) THEN
-               cType = mat_id_(1, col)
-               EXIT
-            ENDIF
-         ENDDO
-      ENDIF
-      IF ( cType /= mat_id_(1, col) ) THEN
-         nTypes = nTypes + 1
-         mat_t(nTypes) = mat_id_(1, col)
-         cType = mat_id_(1, col)
-         zon = nTypes
-         zm(col) = zon
-      ENDIF
-
-      aed_env(col)%yearday      => yearday
-      aed_env(col)%timestep     => dt !timestep
-
-      aed_env(col)%longitude    => longitude
-      aed_env(col)%latitude     => latitude
-
-      aed_env(col)%top_idx      => surf_map2(col)
-      aed_env(col)%bot_idx      => benth_map2(col)
-      aed_env(col)%active       => active(col)
-
-      aed_env(col)%temp         => temp(top:bot)
-      aed_env(col)%salt         => salt(top:bot)
-      aed_env(col)%rho          => rho(top:bot)
-      aed_env(col)%dz           => z_(top:bot)
-      aed_env(col)%height       => h(top:bot)
-      aed_env(col)%area         => area(top:bot)
-      aed_env(col)%depth        => depth(top:bot)
-      aed_env(col)%extc         => extc(top:bot)
-      aed_env(col)%tss          => tss(top:bot)
-      aed_env(col)%ss1          => ss1(top:bot)
-      aed_env(col)%ss2          => ss2(top:bot)
-      aed_env(col)%ss3          => ss3(top:bot)
-      aed_env(col)%ss4          => ss4(top:bot)
-      aed_env(col)%cvel         => cvel_(top:bot)
-      aed_env(col)%rad          => rad_(:,col)
-
-      aed_env(col)%I_0          => I_0(col)
-      aed_env(col)%wind         => wind(col)
-      aed_env(col)%air_temp     => air_temp(col)
-      aed_env(col)%air_pres     => air_pres(col)
-      aed_env(col)%rain         => rain(col)
-      aed_env(col)%humidity     => humidity(col)
-      aed_env(col)%longwave     => longwave(col)
-      aed_env(col)%bathy        => bathy(col)
-      aed_env(col)%rainloss     => rainloss(col)
-      aed_env(col)%layer_stress => layer_stress(col)
-
-      aed_env(col)%ustar_bed    => ustar_bed(top:bot)
-      aed_env(col)%wv_uorb      => wv_uorb(top:bot)
-      aed_env(col)%wv_t         => wv_t(top:bot)
-
-      aed_env(col)%sed_zones    => sed_zones(top:bot)
-      aed_env(col)%sed_zone     => sed_zone(col)
-      aed_env(col)%mat_id       => mat_t(col)
-
-      aed_env(col)%par          => par(top:bot)
-      aed_env(col)%nir          => nir(top:bot)
-      aed_env(col)%uva          => uva(top:bot)
-      aed_env(col)%uvb          => uvb(top:bot)
-
-      aed_env(col)%biodrag      => biodrag(top:bot)
-      aed_env(col)%solarshade   => solarshade_(col)
-
-      aed_env(col)%windshade    => feedback(col)
-
-      aed_data(col)%cc          => cc(:, top:bot)
-      aed_data(col)%cc_hz       => cc(:, top)
-      aed_data(col)%cc_diag     => cc_diag(:, top:bot)
-      aed_data(col)%cc_diag_hz  => cc_diag(:, top)
-   ENDDO
-
-   CALL aed_set_model_env(aed_env, n_cols, n_layers)
-   DEALLOCATE(aed_env)
-
-   CALL aed_set_model_data(aed_data, n_cols, n_layers)
-   DEALLOCATE(aed_data)
-
-   print "( 'Model has ',I4, ' columns with ', I4, ' layers per column')", n_cols, n_layers
-
-   IF (n_zones .GT. 0) &
-      CALL api_set_fv_zones(n_layers, n_cols, n_vars, n_vars_ben, &
-                                    n_vars_diag, n_vars_diag_sheet, n_aed_vars)
-
-   doMobilityP => doMobilityF
-   CALL aed_set_mobility_fn(doMobilityP)
 END SUBROUTINE set_env_aed_models
-!+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-!###############################################################################
-SUBROUTINE fill_nearest(n_cols)
-!-------------------------------------------------------------------------------
-!ARGUMENTS
-   INTEGER, INTENT(in) :: n_cols
-!
-!LOCALS
-   INTEGER  :: k, col, prev, next
-!
-!-------------------------------------------------------------------------------
-!BEGIN
-   IF ( ALLOCATED(route_table) ) THEN
-      DO col=1, n_cols
-         IF (active(col) .AND. h(benth_map(col))>=min_water_depth) THEN
-            nearest_active(col) = col
-            nearest_depth(col) = h(benth_map(col)) + bathy(col)
-         ELSE
-            k = route_table(col)
-            DO WHILE ( .NOT. active(k) .OR. h(benth_map(k))<min_water_depth)
-               IF ( k == route_table(k) ) EXIT
-               k = route_table(k)
-            ENDDO
-            nearest_active(col) = k
-            nearest_depth(col) = h(benth_map(k)) + bathy(k)
-            ! this needs fixing to sum over top:bot, as h is layer thicknesses, not references to datum
-         ENDIF
-      ENDDO
-   ELSE
-      nearest_active = 0.
-   ENDIF
-END SUBROUTINE fill_nearest
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
@@ -1052,7 +1040,6 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
    INTEGER :: i, j, col, lev, v, d, ix
    AED_REAL,PARAMETER :: r100 = 1.0e2
    INTEGER :: grp, prt, stat, idx3d
-!aed_real :: surf
 !
 !-------------------------------------------------------------------------------
 !BEGIN
@@ -1082,6 +1069,43 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
    IF ( ThisStep >= n_equil_substep ) ThisStep = 0
 
    print *,"    FINISH do_aed_models"
+
+CONTAINS
+!-------------------------------------------------------------------------------
+
+   !############################################################################
+   SUBROUTINE fill_nearest(n_cols)
+   !----------------------------------------------------------------------------
+   !ARGUMENTS
+      INTEGER, INTENT(in) :: n_cols
+   !
+   !LOCALS
+      INTEGER  :: k, col, prev, next
+   !
+   !----------------------------------------------------------------------------
+   !BEGIN
+      IF ( ALLOCATED(route_table) ) THEN
+         DO col=1, n_cols
+            IF (active(col) .AND. h(benth_map(col))>=min_water_depth) THEN
+               nearest_active(col) = col
+               nearest_depth(col) = h(benth_map(col)) + bathy(col)
+            ELSE
+               k = route_table(col)
+               DO WHILE ( .NOT. active(k) .OR. h(benth_map(k))<min_water_depth)
+                  IF ( k == route_table(k) ) EXIT
+                  k = route_table(k)
+               ENDDO
+               nearest_active(col) = k
+               nearest_depth(col) = h(benth_map(k)) + bathy(k)
+               ! this needs fixing to sum over top:bot, as h is layer thicknesses, not references to datum
+            ENDIF
+         ENDDO
+      ELSE
+         nearest_active = 0.
+      ENDIF
+   END SUBROUTINE fill_nearest
+   !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 END SUBROUTINE do_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1212,7 +1236,6 @@ SUBROUTINE clean_aed_models
    IF (allocated(par))            deallocate(par)
    IF (allocated(uva))            deallocate(uva)
    IF (allocated(uvb))            deallocate(uvb)
-!  IF (allocated(pactive))        deallocate(pactive)
 END SUBROUTINE clean_aed_models
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1315,7 +1338,6 @@ SUBROUTINE api_set_fv_zones(n_layers, n_columns, numVars, numBenV, numDiagV, num
    ALLOCATE(z_cc_hz(numBenV, n_zones))              ; z_cc_hz = 0.
    ALLOCATE(z_cc_diag(numDiagV, n_layers, n_zones)) ; z_cc_diag = 0.
    ALLOCATE(z_cc_diag_hz(numDiagHzV, n_zones+1))    ; z_cc_diag_hz = 0.
-   ALLOCATE(zm(n_columns))
 
    CALL aed_init_zones(n_zones, 1, z_cc, z_cc_hz, z_cc_diag, z_cc_diag_hz)
 
