@@ -77,9 +77,9 @@ if [ "$OSTYPE" = "Msys" ] ; then
   fi
 
   if [ "$WITH_AED_PLUS" = "true" ] ; then
-    cmd.exe '/c build_fv.bat tuflowfv_external_wq+'
+    cmd.exe '/c build_fv+.bat'
   else
-    cmd.exe '/c build_fv.bat tuflowfv_external_wq'
+    cmd.exe '/c build_fv.bat'
   fi
   if [ $? -ne 0 ] ; then
     echo errors in build
