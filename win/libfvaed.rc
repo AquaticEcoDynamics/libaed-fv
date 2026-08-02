@@ -32,7 +32,7 @@ BEGIN
             VALUE "FileDescription", "TuflowFV Water Quality Module"
             VALUE "FileVersion", 2.4.0
             VALUE "InternalName", "version.rc"
-            VALUE "LegalCopyright", "Copyright (C) 2025"
+            VALUE "LegalCopyright", "Copyright (C) 2026"
             VALUE "OriginalFilename", "version.rc"
             VALUE "ProductName", "aed-fv"
             VALUE "ProductVersion", 2.4.0

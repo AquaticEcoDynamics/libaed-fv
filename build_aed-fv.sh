@@ -13,6 +13,7 @@ export DEBUG=false
 export WITH_AED=true
 export WITH_AED_PLUS=false
 export WITH_MPI=false
+export WITH_CHECKS=false
 
 export LICENSE=0
 
@@ -22,15 +23,16 @@ while [ $# -gt 0 ] ; do
   case $1 in
     --debug)
       export DEBUG=true
-      ;;
-    --fence)
-      export FENCE=true
+      export WITH_CHECKS=true
       ;;
     --static)
       export EXTERNAL_LIBS=static
       ;;
     --single)
       export SINGLE=true
+      ;;
+    --with-checks)
+      export WITH_CHECKS=true
       ;;
     --with-aed-plus)
       export WITH_AED_PLUS=true
@@ -41,7 +43,26 @@ while [ $# -gt 0 ] ; do
     --ifx)
       export FC=ifx
       ;;
+    --help)
+      echo "build_aed-fv accepts the following flags:"
+      echo "  --debug            : build with debugging symbols"
+      echo "  --with-checks      : add compiler flag to check array bounds"
+      echo "  --ifx              : use the newer intel fortran compiler"
+      echo
+      echo "  --with-aed-plus    : build with aed and aed-plus enabled"
+      echo "  --without-aed-plus : build without aed and aed-plus enabled"
+      echo "  --with-lib         : build library (libglm) as well"
+      echo "  --without-lib      : dont build libglm (default)"
+      echo
+      echo "  --single           : build single precision version (obsolete)"
+      echo "  --static           : build static library instead (obsolete)"
+      echo
+
+      exit 0
+      ;;
     *)
+      echo "Unknown option \"$1\""
+      exit 1
       ;;
   esac
   shift
@@ -61,7 +82,7 @@ if [ "$OSTYPE" = "Msys" ] ; then
   #=============================== Windows build ===============================
   export VERSION=`grep FV_AED_VERS ${CURDIR}/src/fv_aed.F90 | grep define | cut -f2 -d\"`
   if [ "$VERSION" = "" ] ; then
-    export VERSION=`grep FV_AED_API_VERS ${CURDIR}/src/fv_aed.F90 | grep head -1 | cut -f2 -d\"`
+    export VERSION=`grep FV_AED_API_VERS ${CURDIR}/src/fv_aed.F90 | head -1 | cut -f2 -d\"`
   fi
   cd ${CURDIR}/win
   ../vers.sh $VERSION
@@ -77,9 +98,9 @@ if [ "$OSTYPE" = "Msys" ] ; then
   fi
 
   if [ "$WITH_AED_PLUS" = "true" ] ; then
-    cmd.exe '/c build_fv.bat tuflowfv_external_wq+ '
+    cmd.exe '/c build_fv+.bat'
   else
-    cmd.exe '/c build_fv.bat tuflowfv_external_wq '
+    cmd.exe '/c build_fv.bat'
   fi
   if [ $? -ne 0 ] ; then
     echo errors in build
@@ -187,8 +208,9 @@ if [ "$EXTERNAL_LIBS" = "shared" ] ; then
     BINPATH="binaries/macos/${MOSNAME}"
   fi
   if [ "$OSTYPE" = "Linux" ] ; then
-    if [ $(lsb_release -is) = Ubuntu ] ; then
-      BINPATH="binaries/ubuntu/$(lsb_release -rs)"
+    RELEASE=`lsb_release -is | tr '[A-Z]' '[a-z]'`
+    if [ $RELEASE = ubuntu ] || [ $RELEASE = debian ] ; then
+      BINPATH=binaries/$RELEASE/$(lsb_release -rs)
     fi
     cd ${CURDIR}
     if [ -d debian/libaed-tfv ] ; then
