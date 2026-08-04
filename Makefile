@@ -43,7 +43,6 @@ FFLAGS+=-real-size 64
 FFLAGS+=-fPIC
 
 ifneq ($(AEDAPIDIR),)
-  AEDAPIDIR=../libaed-api
   LIBAEDAPI=aed-api
   INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
 endif

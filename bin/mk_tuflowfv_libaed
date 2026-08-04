@@ -1,8 +1,5 @@
 #!/bin/bash
 
-if [ "$MYPATH" = "" ] ; then
-  MYPATH='/usr/local/lib/libaed-tfv'
-fi
 if [ "$TFV_VRS" = "" ] ; then
   export TFV_VRS=`cat tuflowfv-version`
 fi
