@@ -8,7 +8,7 @@
 !#                                                                             #
 !#      http://aquatic.science.uwa.edu.au/                                     #
 !#                                                                             #
-!#  Copyright 2013-2025 - The University of Western Australia                  #
+!#  Copyright 2013-2026 - The University of Western Australia                  #
 !#                                                                             #
 !###############################################################################
 
@@ -18,7 +18,7 @@ MODULE tuflowfv_external_wq_aed
 !-------------------------------------------------------------------------------
    USE tuflowfv_wq_api !  Version 1.0
    USE fv_aed
-   USE fv_zones
+!  USE fv_zones
 
    IMPLICIT NONE
 

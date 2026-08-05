@@ -31,7 +31,7 @@ OUTLIB=libtuflowfv_external_wq
 SHARED=-shared -Wl,-soname,$(OUTLIB).so.$(SOVERS)
 
 INCLUDES+=-I/opt/intel/include
-DEBUG_FFLAGS=-g -traceback
+DEBUG_FFLAGS=-g -traceback -O3
 OMPFLAG=-qopenmp
 OPT_FFLAGS=-O3 ${OMPFLAG}
 FFLAGS=-g -fpp -warn all -module ${moddir} -static-intel -mp1 -warn nounused $(DEFINES)
@@ -42,8 +42,13 @@ FFLAGS+=-real-size 64
 
 FFLAGS+=-fPIC
 
+ifneq ($(AEDAPIDIR),)
+  LIBAEDAPI=aed-api
+  INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
+endif
+
 LIBWATAED=aed-water
-SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
+SOFLAGS = ${libdir}/lib${LIBAEDFV}.a ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a ${AEDWATDIR}/lib/lib${LIBWATAED}.a
 
 EXTFLAG=
 ifneq ($(AEDBENDIR),)
@@ -74,13 +79,6 @@ ifneq ($(AEDDEVDIR),)
 else
   EXTFLAG+=-DNO_DEV
 endif
-ifneq ($(AEDAPIDIR),)
-  AEDAPIDIR=../libaed-api
-  LIBAEDAPI=aed-api
-  INCLUDES+=-I$(AEDAPIDIR)/include -I$(AEDAPIDIR)/mod
-
-  SOFLAGS += ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a
-endif
 
 ifeq ($(DEBUG),true)
   FFLAGS+=$(DEBUG_FFLAGS)
@@ -99,9 +97,7 @@ endif
 TFFLAGS += -g -DAED -DEXTERNAL_WQ=2
 INCLUDES += -I${moddir}
 
-
-FVOBJECTS=${objdir}/fv_zones.o ${objdir}/fv_aed.o
-FVAOBJECTS=${objdir}/fv_api_zones.o ${objdir}/fv_api_aed.o
+FVOBJECTS=${objdir}/fv_aed.o
 OBJECTS=${objdir}/tuflowfv_wq_api.o ${objdir}/tuflowfv_external_wq_aed.o ${objdir}/aed_external.o
 
 ifeq ($(EXTERNAL_LIBS),shared)
@@ -124,7 +120,7 @@ ${libdir}/${OUTLIB}.a: ${libdir}/lib${LIBAEDFV}.a ${OBJECTS}
 	#  into the external wq lib so there is less change to the tfv makefile
 	( cd ${objdir} ; ar -x ${AEDWATDIR}/lib/lib${LIBWATAED}.a )
 ifneq ($(AEDAPIDIR),)
-	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAPIAED}.a )
+	( cd ${objdir} ; ar -x ${AEDAPIDIR}/lib/lib${LIBAEDAPI}.a )
 endif
 ifneq ($(AEDBENDIR),)
 	( cd ${objdir} ; ar -x ${AEDBENDIR}/lib/lib${LIBBENAED}.a )
@@ -171,12 +167,12 @@ ${libdir}:
 	@mkdir ${libdir}
 
 clean:
-	/bin/rm -f *.i90
-	/bin/rm -f ${objdir}/*.o
-	/bin/rm -f ${moddir}/*.mod
-	/bin/rm -f ${libdir}/*.a
-	/bin/rm -f ${libdir}/*.so*
+	@/bin/rm -f *.i90
+	@/bin/rm -f ${objdir}/*.o
+	@/bin/rm -f ${moddir}/*.mod
+	@/bin/rm -f ${libdir}/*.a
+	@/bin/rm -f ${libdir}/*.so*
 
 distclean: clean
-	/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
-	/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv
+	@/bin/rm -rf ${libdir} ${moddir} ${objdir} mod_s
+	@/bin/rm -rf debian/.debhelper debian/files debian/libaed-tfv.substvars debian/libaed-tfv
