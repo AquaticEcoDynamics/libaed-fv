@@ -557,7 +557,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
 !
 !LOCALS
    INTEGER :: col, top, bot, lev
-   INTEGER :: zon, n_layers, cType, nTypes
+   INTEGER :: zon, n_layers, cType, cZone, nTypes
    INTEGER :: l_idx, h_idx
    TYPE(aed_env_t),DIMENSION(:),ALLOCATABLE :: aed_env
    TYPE(aed_data_t),DIMENSION(:),ALLOCATABLE :: aed_data
@@ -676,24 +676,33 @@ SUBROUTINE set_env_aed_models(dt_,              &
    ALLOCATE(mat_t(n_cols)) ; ALLOCATE(zm(n_cols))
    mat_t = 0 ; zm = 1 ; zon = 1
    !# The new form of zones
-   cType = mat_id_(1,1) ; nTypes = 1 ; mat_t(nTypes) = mat_id_(1,1)
+   !# zm(col) MUST be assigned on every iteration.  It was previously set only
+   !# in the "new material type" branch, so any cell whose material had already
+   !# been seen fell through and kept the initialised zm = 1, reporting
+   !# sed_zone = zone(1) (the material of cell 1).  On a 14-material mesh that
+   !# left just one correctly-mapped cell per material and collapsed every
+   !# zone-based benthic module (aed_sedflux, aed_assflux, :za models) onto a
+   !# single zone.  cType/cZone cache the previous column's lookup, since
+   !# meshes are typically ordered in runs of like material.
+   cType = mat_id_(1,1) ; nTypes = 1 ; mat_t(nTypes) = mat_id_(1,1) ; cZone = 1
 
    DO col=1, n_cols
-      IF ( cType /= mat_id_(1, col) ) THEN
+      IF ( cType /= mat_id_(1, col) ) THEN     !# cache miss: find, or add, the type
+         cZone = 0
          DO zon=1,nTypes
             IF ( mat_t(zon) .EQ. mat_id_(1, col) ) THEN
-               cType = mat_id_(1, col)
+               cZone = zon
                EXIT
             ENDIF
          ENDDO
-      ENDIF
-      IF ( cType /= mat_id_(1, col) ) THEN
-         nTypes = nTypes + 1
-         mat_t(nTypes) = mat_id_(1, col)
+         IF ( cZone == 0 ) THEN
+            nTypes = nTypes + 1
+            mat_t(nTypes) = mat_id_(1, col)
+            cZone = nTypes
+         ENDIF
          cType = mat_id_(1, col)
-         zon = nTypes
-         zm(col) = zon
       ENDIF
+      zm(col) = cZone
    ENDDO
    n_zones = nTypes
 
