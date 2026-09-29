@@ -79,6 +79,8 @@ ifneq ($(AEDDEVDIR),)
 else
   EXTFLAG+=-DNO_DEV
 endif
+# repeat libaed-water last, so the libs above can resolve symbols from it (eg aed_spectra)
+SOFLAGS+=${AEDWATDIR}/lib/lib${LIBWATAED}.a
 
 ifeq ($(DEBUG),true)
   FFLAGS+=$(DEBUG_FFLAGS)
