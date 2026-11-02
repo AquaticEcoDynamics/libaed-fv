@@ -74,6 +74,9 @@ MODULE fv_aed
    INTEGER,DIMENSION(:),POINTER :: surf_map, benth_map
    INTEGER,DIMENSION(:),POINTER :: surf_map2, benth_map2
    LOGICAL,DIMENSION(:),POINTER :: active
+   !# AED's own wet/dry flag: host active and bottom-layer depth >= min_water_depth
+   !# (dry_below_min_depth), so the thin film TUFLOW-FV keeps on dry cells is dry for AED too
+   LOGICAL,DIMENSION(:),ALLOCATABLE,TARGET :: aed_active
 
    !# Maps to nearest cell with water (for riparian exchange)
    AED_REAL,DIMENSION(:),ALLOCATABLE,TARGET :: nearest_active
@@ -179,6 +182,7 @@ MODULE fv_aed
    LOGICAL  :: no_glob_lim = .FALSE.
 
    AED_REAL :: min_water_depth =  0.0401
+   LOGICAL  :: dry_below_min_depth = .TRUE.   !# AED treats a column as dry below min_water_depth
    INTEGER  :: n_equil_substep = 1
 
    LOGICAL  :: display_minmax = .FALSE.
@@ -259,6 +263,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
                       link_solar_shade, link_rain_loss, init_values_file,      &
                       do_limiter, glob_min, glob_max, no_glob_lim,             &
                       route_table_file, n_equil_substep, min_water_depth,      &
+                      dry_below_min_depth,                                     &
                       link_wave_stress, wave_factor, display_minmax,           &
                       display_cellid, depress_clutch,                          &
                       nir_frac,par_frac,uva_frac,uvb_frac, longitude, latlat,  &
@@ -288,6 +293,7 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    print *,'        link_wave_stress   :  ',link_wave_stress
    print *,'        link_solar_shade   :  ',link_solar_shade
    print *,'        link_rain_loss     :  ',link_rain_loss
+   print *,'        dry_below_min_depth:  ',dry_below_min_depth,'  (min_water_depth ',min_water_depth,')'
    print *,'        link_particle_bgc  :  ',do_particle_bgc,' (under development)'
    print *,'        link_water_density :  ',link_water_density,' (not implemented)'
    print *,'        link_host_time     :  ',link_host_time
@@ -653,6 +659,10 @@ SUBROUTINE set_env_aed_models(dt_,              &
       solarshade(l_idx:h_idx) = solarshade_(col)
    ENDDO
 
+   !# Routing table (nearest wet column downhill): loaded before the column environment
+   !# is set up, so the columns can point at nearest_active / nearest_depth.
+   IF ( route_table_file /= '' ) CALL load_route_table(ubound(benth_map, 1))
+
    ALLOCATE(aed_env(n_cols))
    ALLOCATE(aed_data(n_cols))
 
@@ -670,6 +680,8 @@ SUBROUTINE set_env_aed_models(dt_,              &
    rho => rho_
    tss => tss_
    active => active_
+   IF (.NOT. ALLOCATED(aed_active)) ALLOCATE(aed_active(n_cols))
+   aed_active = active                       !# refreshed every update (do_aed_models)
 
    IF (link_ext_par) THEN ; lpar => rad_(1,:) ; ELSE ; lpar => par ; ENDIF
 
@@ -730,7 +742,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
       aed_env(col)%top_idx      => surf_map2(col)
       aed_env(col)%bot_idx      => benth_map2(col)
-      aed_env(col)%active       => active(col)
+      aed_env(col)%active       => aed_active(col)
 
       aed_env(col)%temp         => temp(top:bot)
       aed_env(col)%salt         => salt(top:bot)
@@ -779,6 +791,10 @@ SUBROUTINE set_env_aed_models(dt_,              &
 
       aed_env(col)%biodrag      => biodrag(top:bot)
       aed_env(col)%solarshade   => solarshade_(col)
+      IF ( have_nearest ) THEN
+         aed_env(col)%nearest_active => nearest_active(col)
+         aed_env(col)%nearest_height => nearest_depth(col)
+      ENDIF
 
     ! aed_env(col)%windshade    => feedback(col)
 
@@ -804,7 +820,6 @@ SUBROUTINE set_env_aed_models(dt_,              &
    CALL aed_set_mobility_fn(doMobilityP)
 
    IF ( init_values_file /= '' ) CALL set_initial_from_file
-   IF ( route_table_file /= '' ) CALL load_route_table(ubound(benth_map, 1))
 !
 !-------------------------------------------------------------------------------
 CONTAINS
@@ -1029,6 +1044,8 @@ CONTAINS
       IF (ASSOCIATED(csvnames)) DEALLOCATE(csvnames)
       IF (ALLOCATED(values))    DEALLOCATE(values)
       have_nearest = .TRUE.
+      request_nearest = .TRUE.            !# fill_nearest every WQ update
+      nearest_active = 0. ; nearest_depth = 0.
    END SUBROUTINE load_route_table
    !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1066,6 +1083,14 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
    yearday = day_of_year(time) ! calc from time
 
    print *,"    START do_aed_models : "
+
+   !# AED wet/dry for this update: the host flag, and dry below min_water_depth
+   !# (as fv_aed did before the API; fill_nearest uses the same test)
+   DO col = 1, n_cols
+      aed_active(col) = active(col)
+      IF ( dry_below_min_depth ) &
+         aed_active(col) = active(col) .AND. h(benth_map(col)) >= min_water_depth
+   ENDDO
 
    IF ( request_nearest ) CALL fill_nearest(n_cols)
 
