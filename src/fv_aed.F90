@@ -297,6 +297,13 @@ SUBROUTINE init_aed_models(namlst, dname, nwq_var, nben_var, ndiag_var,        &
    print *,'        link_particle_bgc  :  ',do_particle_bgc,' (under development)'
    print *,'        link_water_density :  ',link_water_density,' (not implemented)'
    print *,'        link_host_time     :  ',link_host_time
+   !# Own clock when the host time cannot be used (non-patched TFV): startday in Julian seconds
+   !# (as day_of_year expects), advanced by dt every call of do_aed_models
+   IF ( .NOT. link_host_time ) THEN
+      IF ( startday <= zero_ ) STOP 'fv_aed: link_host_time is false, but startday is not set'
+      aedtime = startday
+      print *,'        startday           :  ',startday,' (AED clock, Julian seconds)'
+   ENDIF
 
    cpl%glm_style_zones = .FALSE.
 
@@ -509,7 +516,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
                                rho_,             &
                                h_,               &
                                tss_,             &
-                               rad_,             &
+                               irr_host_,        &
                                vvel_,            &
                                cvel_,            &
                             ! 3D feedback arrays
@@ -546,7 +553,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    DOUBLETYPE, INTENT(in) :: dt_
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: temp_, salt_, rho_, h_,    &
                                                     area_, tss_, extcoeff_, z_
-   AED_REAL, INTENT(in), DIMENSION(:,:), POINTER :: rad_
+   AED_REAL, INTENT(in), DIMENSION(:,:), POINTER :: irr_host_
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: vvel_, cvel_
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: I_0_, wnd_, ustar_bed_, ustar_surf_
    AED_REAL, INTENT(in), DIMENSION(:),   POINTER :: longwave_
@@ -683,7 +690,7 @@ SUBROUTINE set_env_aed_models(dt_,              &
    IF (.NOT. ALLOCATED(aed_active)) ALLOCATE(aed_active(n_cols))
    aed_active = active                       !# refreshed every update (do_aed_models)
 
-   IF (link_ext_par) THEN ; lpar => rad_(1,:) ; ELSE ; lpar => par ; ENDIF
+   IF (link_ext_par) THEN ; lpar => irr_host_(1,:) ; ELSE ; lpar => par ; ENDIF
 
    ALLOCATE(mat_t(n_cols)) ; ALLOCATE(zm(n_cols))
    mat_t = 0 ; zm = 1 ; zon = 1
@@ -763,7 +770,6 @@ SUBROUTINE set_env_aed_models(dt_,              &
     ! aed_env(col)%ss4          => ss4(top:bot)
       aed_env(col)%ss4          => tss(top:bot)
       aed_env(col)%cvel         => cvel_(top:bot)
-    ! aed_env(col)%rad          => rad_(:,col)
 
       aed_env(col)%I_0          => I_0(col)
       aed_env(col)%wind         => wind(col)
@@ -924,7 +930,7 @@ CONTAINS
                       ! IF ( same_str_icase(tv%name, "LND_phreatic") ) THEN
                       ! phreat_id = av ; phreat_col = ccol ; phreat_var = d ; ENDIF
                         IF ( tv%sheet ) THEN
-                           dvar(numd) = sd
+                           dvar(numd) = n_vars_diag + sd    ! sheet diags follow the 3D diags
                         ELSE
                            dvar(numd) = d
                         ENDIF
@@ -933,7 +939,7 @@ CONTAINS
                         numv = numv + 1
                         vmap(numv) = ccol
                         IF ( tv%sheet ) THEN
-                           vars(numv) = sv
+                           vars(numv) = n_vars + sv         ! sheet states follow the 3D states
                         ELSE
                            vars(numv) = v
                         ENDIF
@@ -1080,7 +1086,12 @@ SUBROUTINE do_aed_models(nCells_, n_cols, time)
    !# START-UP JOBS
    rainloss = zero_
 
-   yearday = day_of_year(time) ! calc from time
+   IF ( link_host_time ) THEN
+      aedtime = time
+   ELSE
+      aedtime = aedtime + dt                 ! own clock (startday + steps)
+   ENDIF
+   yearday = day_of_year(aedtime)
 
    print *,"    START do_aed_models : "
 
